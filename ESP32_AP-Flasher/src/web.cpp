@@ -966,7 +966,7 @@ void doJsonUpload(AsyncWebServerRequest *request) {
         uint8_t mac[8];
         if (hex2mac(dst, mac)) {
             xSemaphoreTake(fsMutex, portMAX_DELAY);
-            File file = LittleFS.open("/current/" + dst + ".json", "w");
+            File file = contentFS->open("/current/" + dst + ".json", "w");
             if (!file) {
                 request->send(400, "text/plain", "Failed to create file");
                 xSemaphoreGive(fsMutex);
