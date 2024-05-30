@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <HardwareSerial.h>
+#include <system.h>
 
 #include "commstructs.h"
 #include "contentmanager.h"
@@ -706,7 +707,18 @@ void rxSerialTask(void* parameter) {
 }
 
 #if defined(FLASHER_DEBUG_RXD) && !defined(FLASHER_DEBUG_SHARED)
+uint32_t millisDiff(uint32_t m) {
+    uint32_t ms = millis();
+    if (ms >= m)
+        return ms - m;
+    else
+        return UINT32_MAX - m + ms + 1;
+}
+
 void rxSerialTask2(void* parameter) {
+    char rxStr[100] = {0};
+    int rxStrCount = 0;
+    uint32_t modemResetHoldoff = millis();
     char lastchar = 0;
     time_t startTime = millis();
     int charCount = 0;
@@ -718,6 +730,33 @@ void rxSerialTask2(void* parameter) {
 
             // debug info
             Serial.write(lastchar);
+
+            rxStr[rxStrCount] = lastchar;
+            if (lastchar == '\n' || lastchar == '\r') {
+                if (strncmp(rxStr, "receive buffer full, drop the current frame", 43) == 0 && millisDiff(modemResetHoldoff) > 20000) {
+                    modemResetHoldoff = millis();
+                    vTaskDelay(100 / portTICK_PERIOD_MS);
+                    config.runStatus = RUNSTATUS_STOP;
+                    Serial.println("IEEE802.15.4 modem stuck case detected, resetting...");
+                    APTagReset();
+                    vTaskDelay(1000 / portTICK_PERIOD_MS);
+                    Serial.println("bringing AP online again");
+                    if (bringAPOnline()) {
+                        config.runStatus = RUNSTATUS_RUN;
+                        Serial.println("Finished!");
+                    } else {
+                        Serial.println("Failed!");
+                    }
+                    logLine("IEEE802.15.4 modem reset " + (config.runStatus == RUNSTATUS_RUN)?("ok"):("failed"));
+                }
+                rxStrCount = 0;
+                memset(rxStr, 0, sizeof(rxStr));
+            } else if(rxStrCount < sizeof(rxStr) - 2) {
+                rxStrCount++;
+            } else {
+                rxStrCount = 0;
+                memset(rxStr, 0, sizeof(rxStr));
+            }
         }
         vTaskDelay(1 / portTICK_PERIOD_MS);
 
@@ -881,7 +920,7 @@ void APTask(void* parameter) {
 
     xTaskCreate(rxCmdProcessor, "rxCmdProcessor", 6000, NULL, 15, NULL);
 #if defined(FLASHER_DEBUG_RXD) && !defined(FLASHER_DEBUG_SHARED)
-    xTaskCreate(rxSerialTask2, "rxSerialTask2", 1750, NULL, 2, NULL);
+    xTaskCreate(rxSerialTask2, "rxSerialTask2", 1850, NULL, 2, NULL);
     vTaskDelay(500 / portTICK_PERIOD_MS);
 #endif
     bringAPOnline();

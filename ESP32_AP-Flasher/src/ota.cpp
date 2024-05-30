@@ -335,7 +335,7 @@ void C6firmwareUpdateTask(void* parameter) {
         Serial1.begin(115200, SERIAL_8N1, FLASHER_AP_RXD, FLASHER_AP_TXD);
 #ifndef FLASHER_DEBUG_SHARED
         rxSerialStopTask2 = false;
-        xTaskCreate(rxSerialTask2, "rxSerialTask2", 1750, NULL, 2, NULL);
+        xTaskCreate(rxSerialTask2, "rxSerialTask2", 1850, NULL, 2, NULL);
 #endif
         vTaskDelay(1000 / portTICK_PERIOD_MS);
 
@@ -347,12 +347,12 @@ void C6firmwareUpdateTask(void* parameter) {
         wsSerial("bringing AP online");
         if (bringAPOnline()) config.runStatus = RUNSTATUS_RUN;
 
-     // Wait for version info to arrive 
+     // Wait for version info to arrive
         vTaskDelay(50 / portTICK_PERIOD_MS);
         if(apInfo.version == 0) {
            result = false;
         }
-    } 
+    }
 
     if (result) {
        wsSerial("Finished!");
