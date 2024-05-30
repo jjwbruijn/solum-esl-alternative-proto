@@ -26,14 +26,14 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-          
-#      - name: Commit zipped files 
+
+#      - name: Commit zipped files
 #        run: |
 #          git config --global user.name 'Bot'
 #          git config --global user.email "bot@openepaperlink.de"
 #          git commit -am "Zipped web files"
 #          git push origin HEAD:master
-          
+
       - name: Install PlatformIO Core
         run: pip install --upgrade platformio
 
@@ -80,10 +80,10 @@ jobs:
           cp /home/runner/work/OpenEPaperLink/OpenEPaperLink//binaries/ESP32-H2/firmware_H2.json espbinaries
 
 #      - name: Zip web files
-#        run: | 
+#        run: |
 #            cd /home/runner/work/OpenEPaperLink/OpenEPaperLink/ESP32_AP-Flasher
 #            python gzip_wwwfiles.py
-          
+
       - name: Build firmware for OpenEPaperLink_Mini_AP
         if: ${{ env.INCLUDE_MINI_AP == 'true' }}
         run: |
@@ -102,7 +102,7 @@ jobs:
           cd /home/runner/work/OpenEPaperLink/OpenEPaperLink
           cp OpenEPaperLink_Mini_AP/firmware.bin espbinaries/OpenEPaperLink_Mini_AP.bin
           cp OpenEPaperLink_Mini_AP/merged-firmware.bin espbinaries/OpenEPaperLink_Mini_AP_full.bin
-          
+
       - name: Build firmware for OpenEPaperLink_Nano_AP
         if: ${{ env.INCLUDE_Nano_AP == 'true' }}
         run: |
@@ -124,7 +124,7 @@ jobs:
 #      - name: move files for big APs
 #        run: |
 #          cp -a binaries/ESP32-C6/. ESP32_AP-Flasher/data/
-          
+
       - name: Build firmware for OpenEPaperLink_AP_and_Flasher
         run: |
           cd ESP32_AP-Flasher
@@ -213,7 +213,7 @@ jobs:
           cd /home/runner/work/OpenEPaperLink/OpenEPaperLink
           cp OpenEPaperLink_Nano_TLSR/firmware.bin espbinaries/OpenEPaperLink_Nano_TLSR.bin
           cp OpenEPaperLink_Nano_TLSR/merged-firmware.bin espbinaries/OpenEPaperLink_Nano_TLSR_full.bin
-          
+
       - name: Build firmware for OpenEPaperLink_PoE_AP
         run: |
           cd ESP32_AP-Flasher
@@ -267,6 +267,29 @@ jobs:
           cd /home/runner/work/OpenEPaperLink/OpenEPaperLink
           cp BLE_ONLY_AP/firmware.bin espbinaries/BLE_ONLY_AP.bin
           cp BLE_ONLY_AP/merged-firmware.bin espbinaries/BLE_ONLY_AP_full.bin
+
+      - name: Build firmware for OpenEPaperLink_ESP32-PoE-ISO_AP
+        run: |
+          cd ESP32_AP-Flasher
+          export PLATFORMIO_BUILD_FLAGS="-D BUILD_VERSION=${{ github.ref_name }} -D SHA=$GITHUB_SHA"
+          pio run --environment OpenEPaperLink_ESP32-PoE-ISO_AP
+          mv data data.bak
+          mkdir data
+          pio run --target buildfs --environment OpenEPaperLink_ESP32-PoE-ISO_AP
+          rmdir data
+          mv data.bak data
+          mkdir /home/runner/work/OpenEPaperLink/OpenEPaperLink/OpenEPaperLink_ESP32-PoE-ISO_AP
+          cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin /home/runner/work/OpenEPaperLink/OpenEPaperLink/OpenEPaperLink_ESP32-PoE-ISO_AP/boot_app0.bin
+          cp .pio/build/OpenEPaperLink_ESP32-PoE-ISO_AP/firmware.bin /home/runner/work/OpenEPaperLink/OpenEPaperLink/OpenEPaperLink_ESP32-PoE-ISO_AP/firmware.bin
+          cp .pio/build/OpenEPaperLink_ESP32-PoE-ISO_AP/bootloader.bin /home/runner/work/OpenEPaperLink/OpenEPaperLink/OpenEPaperLink_ESP32-PoE-ISO_AP/bootloader.bin
+          cp .pio/build/OpenEPaperLink_ESP32-PoE-ISO_AP/partitions.bin /home/runner/work/OpenEPaperLink/OpenEPaperLink/OpenEPaperLink_ESP32-PoE-ISO_AP/partitions.bin
+          cp .pio/build/OpenEPaperLink_ESP32-PoE-ISO_AP/littlefs.bin /home/runner/work/OpenEPaperLink/OpenEPaperLink/OpenEPaperLink_ESP32-PoE-ISO_AP/littlefs.bin
+          cd /home/runner/work/OpenEPaperLink/OpenEPaperLink/OpenEPaperLink_ESP32-PoE-ISO_AP
+          esptool.py --chip esp32 merge_bin -o merged-firmware.bin --flash_mode qio --flash_freq 80m --flash_size 4MB 0x0000 bootloader.bin 0x8000 partitions.bin 0xD000 boot_app0.bin 0x10000 firmware.bin 0x3D0000 littlefs.bin
+          cd /home/runner/work/OpenEPaperLink/OpenEPaperLink
+          cp OpenEPaperLink_ESP32-PoE-ISO_AP/firmware.bin espbinaries/OpenEPaperLink_ESP32-PoE-ISO_AP.bin
+          cp OpenEPaperLink_ESP32-PoE-ISO_AP/merged-firmware.bin espbinaries/BLE_ONLY_AP_full.bin
+
       - name: generate release json file
         run: |
           mkdir jsonfiles
@@ -280,7 +303,7 @@ jobs:
           tag: ${{ github.ref }}
           file_glob: true
           overwrite: true
-      
+
 # this is down here intentionally to be able to modify the binary folder before adding it to the Tag_Flasher later (ota binaries can be removed)
 
       - name: Build firmware for Tag_Flasher
