@@ -918,7 +918,7 @@ void APTask(void* parameter) {
         if (FLASHER_AP_MOSI != -1) {
             fsversion = getAPUpdateVersion(apInfo.type);
             if ((fsversion) && (apInfo.version != fsversion)) {
-                Serial.printf("Firmware version on LittleFS: %04X\r\n", fsversion);
+                Serial.printf("Firmware version on FS: %04X\r\n", fsversion);
 
                 Serial.printf("We're going to try to update the AP's FW in\r\n");
                 flashCountDown(30);
