@@ -70,16 +70,22 @@ jobs:
           #- OpenEPaperLink_AP_and_Flasher
           - ESP32_S3_16_8_YELLOW_AP
           - OpenEPaperLink_Mini_AP_v4
+          - OpenEPaperLink_ESP32-PoE-ISO_AP
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
       - uses: ./.github/actions/setup-pio
 
-      - name: Build ${{ matrix.environment }}
+      - name: Build ${{ matrix.environment }} binary
         run: |
           cd ESP32_AP-Flasher
           pio run --environment ${{ matrix.environment }}
+      - name: Build ${{ matrix.environment }} filesystem
+        if: ${{ matrix.environment != 'OpenEPaperLink_ESP32-PoE-ISO_AP' }}
+        run: |
+          cd ESP32_AP-Flasher
           pio run --target buildfs --environment ${{ matrix.environment }}
+
 
 
