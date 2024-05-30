@@ -10,7 +10,7 @@
 
 DynStorage::DynStorage() : isInited(0) {}
 
-SemaphoreHandle_t fsMutex;
+SemaphoreHandle_t fsMutex = NULL;
 
 static void initLittleFS() {
     LittleFS.begin();
@@ -129,7 +129,9 @@ void copyIfNeeded(const char* path) {
 #endif
 
 void DynStorage::begin() {
-    fsMutex = xSemaphoreCreateMutex();
+    if(!fsMutex) {
+        fsMutex = xSemaphoreCreateMutex();
+    }
     initLittleFS();
 
 #ifdef HAS_SDCARD

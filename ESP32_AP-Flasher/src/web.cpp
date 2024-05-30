@@ -874,10 +874,11 @@ void doImageUpload(AsyncWebServerRequest *request, String filename, size_t index
                     file.write(uploadInfo->buffer, uploadInfo->bufferSize);
                     file.close();
                     uploadInfo->bufferSize = 0;
+                    xSemaphoreGive(fsMutex);
                 } else {
+                    xSemaphoreGive(fsMutex);
                     logLine("Failed to open file for appending: " + uploadfilename);
                 }
-                xSemaphoreGive(fsMutex);
 
                 memcpy(uploadInfo->buffer, data, len);
                 uploadInfo->bufferSize = len;
@@ -891,10 +892,11 @@ void doImageUpload(AsyncWebServerRequest *request, String filename, size_t index
                 if (file) {
                     file.write(uploadInfo->buffer, uploadInfo->bufferSize);
                     file.close();
+                    xSemaphoreGive(fsMutex);
                 } else {
+                    xSemaphoreGive(fsMutex);
                     logLine("Failed to open file for appending: " + uploadfilename);
                 }
-                xSemaphoreGive(fsMutex);
                 request->_tempObject = nullptr;
                 delete uploadInfo;
             }
