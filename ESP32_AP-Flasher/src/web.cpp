@@ -107,7 +107,7 @@ void wsSendSysteminfo() {
         strftime(timeBuffer, sizeof(timeBuffer), languageDateFormat[0].c_str(), &timeinfo);
         setVarDB("ap_date", timeBuffer);
     }
-    setVarDB("ap_ip", WiFi.localIP().toString());
+    setVarDB("ap_ip", wm.localIP().toString());
 
 #ifdef HAS_SUBGHZ
     String ApChanString = String(apInfo.channel);

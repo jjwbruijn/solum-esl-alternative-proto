@@ -4,6 +4,8 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 
+#include <ETH.h>
+
 #include "newproto.h"
 #include "system.h"
 #include "tag_db.h"
@@ -15,6 +17,13 @@
 uint8_t WifiManager::apClients = 0;
 uint8_t x_buffer[100];
 uint8_t x_position = 0;
+
+#if defined(ETHERNET_PHY_POWER) && defined(ETHERNET_PHY_MDC) && defined(ETHERNET_PHY_MDIO) && defined(ETHERNET_PHY_TYPE) && defined(ETHERNET_CLK_MODE)
+static bool eth_init = false;
+static bool eth_connected = false;
+static bool eth_ip_ok = false;
+static long eth_timeout = 0;
+#endif
 
 WifiManager::WifiManager() {
     _reconnectIntervalCheck = 5000;
@@ -43,6 +52,24 @@ void WifiManager::terminalLog(String text) {
 }
 
 void WifiManager::poll() {
+
+#if defined(ETHERNET_PHY_POWER) && defined(ETHERNET_PHY_MDC) && defined(ETHERNET_PHY_MDIO) && defined(ETHERNET_PHY_TYPE) && defined(ETHERNET_CLK_MODE)
+
+    if (eth_connected) {
+        wifiStatus = ETHERNET;
+        if(!eth_ip_ok && eth_timeout != 0 && millis() - eth_timeout > 2000) {
+            eth_timeout = 0;
+            eth_connected = false;
+        }
+    } else if(!eth_connected && wifiStatus == ETHERNET) {
+        wifiStatus = NOINIT;
+        _APstarted = false;
+        WiFi.mode(WIFI_STA);
+        connectToWifi();
+    }
+
+#endif
+
     if (wifiStatus == AP && millis() > _nextReconnectCheck && _ssid != "") {
         if (apClients == 0) {
             terminalLog("Attempting to reconnect to WiFi.");
@@ -68,6 +95,10 @@ void WifiManager::poll() {
     }
 
 #ifndef HAS_USB
+
+#ifdef ETHERNET_CLK_MODE
+    if (!(ETHERNET_CLK_MODE == ETH_CLOCK_GPIO0_IN || ETHERNET_CLK_MODE == ETH_CLOCK_GPIO0_OUT)) {
+#endif
     // ap_and_flasher has gpio0 in use as FLASHER_AP_POWER
     if (digitalRead(0) == LOW) {
         Serial.println("GPIO0 LOW");
@@ -99,12 +130,37 @@ void WifiManager::poll() {
             ESP.restart();
         }
     }
+#ifdef ETHERNET_CLK_MODE
+    }
+#endif
+
 #endif
 
     pollSerial();
 }
 
+void WifiManager::initEth() {
+#if defined(ETHERNET_PHY_POWER) && defined(ETHERNET_PHY_MDC) && defined(ETHERNET_PHY_MDIO) && defined(ETHERNET_PHY_TYPE) && defined(ETHERNET_CLK_MODE)
+    if(!eth_init) {
+        eth_init = true;
+        ETH.begin(
+            ETH_PHY_ADDR,
+            ETHERNET_PHY_POWER,
+            ETHERNET_PHY_MDC,
+            ETHERNET_PHY_MDIO,
+            ETHERNET_PHY_TYPE,
+            ETHERNET_CLK_MODE,
+            false);
+    }
+#endif
+}
+
 bool WifiManager::connectToWifi() {
+#if defined(ETHERNET_PHY_POWER) && defined(ETHERNET_PHY_MDC) && defined(ETHERNET_PHY_MDIO) && defined(ETHERNET_PHY_TYPE) && defined(ETHERNET_CLK_MODE)
+    if (wifiStatus == ETHERNET || eth_connected)
+        return true;
+#endif
+
     Preferences preferences;
     preferences.begin("wifi", false);
     _ssid = preferences.getString("ssid", WiFi_SSID());
@@ -136,6 +192,11 @@ bool WifiManager::connectToWifi() {
 }
 
 bool WifiManager::connectToWifi(String ssid, String pass, bool savewhensuccessfull) {
+#if defined(ETHERNET_PHY_POWER) && defined(ETHERNET_PHY_MDC) && defined(ETHERNET_PHY_MDIO) && defined(ETHERNET_PHY_TYPE) && defined(ETHERNET_CLK_MODE)
+    if (wifiStatus == ETHERNET)
+        return true;
+#endif
+
     _ssid = ssid;
     _pass = pass;
     _savewhensuccessfull = savewhensuccessfull;
@@ -145,26 +206,7 @@ bool WifiManager::connectToWifi(String ssid, String pass, bool savewhensuccessfu
     delay(100);
     WiFi.mode(WIFI_MODE_NULL);
     delay(100);
-    char hostname[32] = "OpenEpaperLink-";
-    uint8_t mac[6];
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    char lastTwoBytes[5];
-    sprintf(lastTwoBytes, "%02X%02X", mac[4], mac[5]);
-    strcat(hostname, lastTwoBytes);
-
-    if (config.alias[0] != '\0') {
-        int len = strlen(config.alias);
-        int j = 0;
-        for (int i = 0; i < len; i++) {
-            char c = config.alias[i];
-            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
-                hostname[j] = c;
-                j++;
-            }
-        }
-        hostname[j] = '\0';
-    }
-    WiFi.setHostname(hostname);
+    WiFi.setHostname(buildHostname(ESP_MAC_WIFI_STA).c_str());
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(WIFI_PS_MIN_MODEM);
 
@@ -177,6 +219,11 @@ bool WifiManager::connectToWifi(String ssid, String pass, bool savewhensuccessfu
 }
 
 bool WifiManager::waitForConnection() {
+#if defined(ETHERNET_PHY_POWER) && defined(ETHERNET_PHY_MDC) && defined(ETHERNET_PHY_MDIO) && defined(ETHERNET_PHY_TYPE) && defined(ETHERNET_CLK_MODE)
+    if (wifiStatus == ETHERNET)
+        return true;
+#endif
+
     unsigned long timeout = millis() + _connectionTimeout;
     wifiStatus = WAIT_CONNECTING;
 
@@ -209,7 +256,7 @@ bool WifiManager::waitForConnection() {
 }
 
 void WifiManager::startManagementServer() {
-    if (!_APstarted) {
+    if (!_APstarted && wifiStatus != ETHERNET) {
         terminalLog("Starting config AP, ssid: OpenEPaperLink");
         logLine("Starting configuration AP, ssid OpenEPaperLink");
         WiFi.disconnect(true, true);
@@ -222,6 +269,37 @@ void WifiManager::startManagementServer() {
         _APstarted = true;
         _nextReconnectCheck = millis() + _retryIntervalCheck;
         wifiStatus = AP;
+    }
+}
+
+String WifiManager::buildHostname(esp_mac_type_t mac_type) {
+    char hostname[32] = "OpenEpaperLink-";
+    uint8_t mac[6];
+    esp_read_mac(mac, mac_type);
+    char lastTwoBytes[5];
+    sprintf(lastTwoBytes, "%02X%02X", mac[4], mac[5]);
+    strcat(hostname, lastTwoBytes);
+
+    if (config.alias[0] != '\0') {
+        int len = strlen(config.alias);
+        int j = 0;
+        for (int i = 0; i < len; i++) {
+            char c = config.alias[i];
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+                hostname[j] = c;
+                j++;
+            }
+        }
+        hostname[j] = '\0';
+    }
+    return String(hostname);
+}
+
+IPAddress WifiManager::localIP() {
+    if (wifiStatus == ETHERNET) {
+        return ETH.localIP();
+    } else {
+        return WiFi.localIP();
     }
 }
 
@@ -295,6 +373,46 @@ void WifiManager::WiFiEvent(WiFiEvent_t event) {
         case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
             // eventname = "Assigned IP address to client";
             break;
+
+#if defined(ETHERNET_PHY_POWER) && defined(ETHERNET_PHY_MDC) && defined(ETHERNET_PHY_MDIO) && defined(ETHERNET_PHY_TYPE) && defined(ETHERNET_CLK_MODE)
+
+        case ARDUINO_EVENT_ETH_START:
+            eventname = "ETH Started";
+            //set eth hostname here
+            ETH.setHostname(buildHostname(ESP_MAC_ETH).c_str());
+            eth_timeout = 0;
+            break;
+        case ARDUINO_EVENT_ETH_CONNECTED:
+            eventname = "ETH Connected";
+            WiFi.mode(WIFI_MODE_NULL);
+            WiFi.disconnect();
+            eth_connected = true;
+            eth_timeout = millis();
+            break;
+        case ARDUINO_EVENT_ETH_GOT_IP:
+            if (ETH.fullDuplex()) {
+                eventname = "ETH MAC: " + ETH.macAddress() + ", IPv4: " + ETH.localIP().toString() + ", FULL_DUPLEX, " + ETH.linkSpeed() + "Mbps";
+            } else {
+                eventname = "ETH MAC: " + ETH.macAddress() + ", IPv4: " + ETH.localIP().toString() + ", " + ETH.linkSpeed() + "Mbps";
+            }
+            eth_ip_ok = true;
+            init_udp();
+            eth_timeout = 0;
+            break;
+        case ARDUINO_EVENT_ETH_DISCONNECTED:
+            eventname = "ETH Disconnected";
+            eth_connected = false;
+            eth_ip_ok = false;
+            eth_timeout = 0;
+            break;
+        case ARDUINO_EVENT_ETH_STOP:
+            eventname = "ETH Stopped";
+            eth_connected = false;
+            eth_ip_ok = false;
+            eth_timeout = 0;
+            break;
+
+#endif
 
         default:
             break;

@@ -16,7 +16,8 @@ enum WifiStatus {
     WAIT_CONNECTING,
     CONNECTED,
     WAIT_RECONNECT,
-    AP
+    AP,
+    ETHERNET
 };
 
 class WifiManager {
@@ -41,6 +42,7 @@ class WifiManager {
     bool waitForConnection();
     void pollSerial();
     static void terminalLog(String text);
+    static String buildHostname(esp_mac_type_t mac_type);
 
    public:
     WifiManager();
@@ -53,6 +55,8 @@ class WifiManager {
     void startManagementServer();
     void poll();
     static void WiFiEvent(WiFiEvent_t event);
+    void initEth();
+    IPAddress localIP();
 };
 
 #endif
