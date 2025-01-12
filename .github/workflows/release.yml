@@ -5,6 +5,12 @@ on:
     tags:
       - '*'
 
+env:
+  INCLUDE_C6_H2: true
+  INCLUDE_MINI_AP: false
+  INCLUDE_Nano_AP: false
+  INCLUDE_S2_Tag_Flasher: false
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -41,30 +47,37 @@ jobs:
         run: |
           mkdir espbinaries
 
-      #- name: esp-idf build
-      #  uses: espressif/esp-idf-ci-action@v1
-      #  with:
-      #    esp_idf_version: latest
-      #    target: esp32c6
-      #    path: 'ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP/'
+      - name: build ESP32-C6 firmware
+        if: ${{ env.INCLUDE_C6_H2 == 'true' }}
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: latest
+          target: esp32c6
+          path: 'ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP/'
 
-     # - name: esp-idf build
-     #   uses: espressif/esp-idf-ci-action@v1
-     #   with:
-     #     esp_idf_version: latest
-     #     target: esp32h2
-     #     path: 'ARM_Tag_FW/OpenEPaperLink_esp32_H2_AP/'
+      - name: Add C6 files to release
+        if: ${{ env.INCLUDE_C6_H2 == 'true' }}
+        run: |
+          cp /home/runner/work/OpenEPaperLink/OpenEPaperLink/ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP/build/OpenEPaperLink_esp32_C6.bin espbinaries/OpenEPaperLink_esp32_C6.bin
+          cp /home/runner/work/OpenEPaperLink/OpenEPaperLink/ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP/build/bootloader/bootloader.bin espbinaries/bootloader_C6.bin
+          cp /home/runner/work/OpenEPaperLink/OpenEPaperLink/ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP/build/partition_table/partition-table.bin espbinaries/partition-table_C6.bin
+          cp /home/runner/work/OpenEPaperLink/OpenEPaperLink//binaries/ESP32-C6/firmware_C6.json espbinaries
 
-      #- name: Add C6 files to release
-      #  run: |
-      #    cp /home/runner/work/OpenEPaperLink/OpenEPaperLink/ARM_Tag_FW/OpenEPaperLink_esp32_C6_AP/build/OpenEPaperLink_esp32_C6.bin espbinaries/OpenEPaperLink_esp32_C6.bin
+      - name: build ESP32-H2 firmware
+        if: ${{ env.INCLUDE_C6_H2 == 'true' }}
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: latest
+          target: esp32h2
+          path: 'ARM_Tag_FW/OpenEPaperLink_esp32_H2_AP/'
 
-      #- name: Add H2 files to release
-      #  run: |
-      #    cd ARM_Tag_FW/OpenEPaperLink_esp32_H2_AP/
-      #    dir build
-      #    esptool.py --chip esp32h2  merge_bin -o merged-firmware.bin --flash_mode dio --flash_size 4MB --flash_freq 48m 0x0 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/OpenEPaperLink_esp32_H2.bin
-      #    cp merged-firmware.bin ../../espbinaries/OpenEPaperLink_esp32_H2.bin
+      - name: Add H2 files to release
+        if: ${{ env.INCLUDE_C6_H2 == 'true' }}
+        run: |
+          cp /home/runner/work/OpenEPaperLink/OpenEPaperLink/ARM_Tag_FW/OpenEPaperLink_esp32_H2_AP/build/OpenEPaperLink_esp32_H2.bin espbinaries/OpenEPaperLink_esp32_H2.bin
+          cp /home/runner/work/OpenEPaperLink/OpenEPaperLink/ARM_Tag_FW/OpenEPaperLink_esp32_H2_AP/build/bootloader/bootloader.bin espbinaries/bootloader_H2.bin
+          cp /home/runner/work/OpenEPaperLink/OpenEPaperLink/ARM_Tag_FW/OpenEPaperLink_esp32_H2_AP/build/partition_table/partition-table.bin espbinaries/partition-table_H2.bin
+          cp /home/runner/work/OpenEPaperLink/OpenEPaperLink//binaries/ESP32-H2/firmware_H2.json espbinaries
 
 #      - name: Zip web files
 #        run: | 
@@ -72,6 +85,7 @@ jobs:
 #            python gzip_wwwfiles.py
           
       - name: Build firmware for OpenEPaperLink_Mini_AP
+        if: ${{ env.INCLUDE_MINI_AP == 'true' }}
         run: |
           cd ESP32_AP-Flasher
           export PLATFORMIO_BUILD_FLAGS="-D BUILD_VERSION=${{ github.ref_name }} -D SHA=$GITHUB_SHA"
@@ -90,6 +104,7 @@ jobs:
           cp OpenEPaperLink_Mini_AP/merged-firmware.bin espbinaries/OpenEPaperLink_Mini_AP_full.bin
           
       - name: Build firmware for OpenEPaperLink_Nano_AP
+        if: ${{ env.INCLUDE_Nano_AP == 'true' }}
         run: |
           cd ESP32_AP-Flasher
           export PLATFORMIO_BUILD_FLAGS="-D BUILD_VERSION=${{ github.ref_name }} -D SHA=$GITHUB_SHA"
@@ -106,7 +121,6 @@ jobs:
           cd /home/runner/work/OpenEPaperLink/OpenEPaperLink
           cp OpenEPaperLink_Nano_AP/firmware.bin espbinaries/OpenEPaperLink_Nano_AP.bin
           cp OpenEPaperLink_Nano_AP/merged-firmware.bin espbinaries/OpenEPaperLink_Nano_AP_full.bin
-
 #      - name: move files for big APs
 #        run: |
 #          cp -a binaries/ESP32-C6/. ESP32_AP-Flasher/data/
@@ -128,7 +142,6 @@ jobs:
           cd /home/runner/work/OpenEPaperLink/OpenEPaperLink
           cp OpenEPaperLink_AP_and_Flasher/firmware.bin espbinaries/OpenEPaperLink_AP_and_Flasher.bin
           cp OpenEPaperLink_AP_and_Flasher/merged-firmware.bin espbinaries/OpenEPaperLink_AP_and_Flasher_full.bin
-
       - name: Build firmware for ESP32_S3_16_8_YELLOW_AP
         run: |
           cd ESP32_AP-Flasher
@@ -254,7 +267,6 @@ jobs:
           cd /home/runner/work/OpenEPaperLink/OpenEPaperLink
           cp BLE_ONLY_AP/firmware.bin espbinaries/BLE_ONLY_AP.bin
           cp BLE_ONLY_AP/merged-firmware.bin espbinaries/BLE_ONLY_AP_full.bin
-          
       - name: generate release json file
         run: |
           mkdir jsonfiles
@@ -272,6 +284,7 @@ jobs:
 # this is down here intentionally to be able to modify the binary folder before adding it to the Tag_Flasher later (ota binaries can be removed)
 
       - name: Build firmware for Tag_Flasher
+        if: ${{ env.INCLUDE_S2_Tag_Flasher == 'true' }}
         run: |
           cd Tag_Flasher/ESP32_Flasher
           export PLATFORMIO_BUILD_FLAGS="-D BUILD_VERSION=${{ github.ref_name }} -D SHA=$GITHUB_SHA"
@@ -288,7 +301,6 @@ jobs:
           cd /home/runner/work/OpenEPaperLink/OpenEPaperLink
           cp S2_Tag_Flasher/firmware.bin espbinaries/S2_Tag_Flasher.bin
           cp S2_Tag_Flasher/merged-firmware.bin espbinaries/S2_Tag_Flasher_full.bin
-
       - name: Add esp bins to release
         uses: svenstaro/upload-release-action@v2
         with:

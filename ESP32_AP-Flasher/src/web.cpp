@@ -514,13 +514,21 @@ void init_web() {
         UDPcomm udpsync;
         udpsync.getAPList();
         AsyncResponseStream *response = request->beginResponseStream("application/json");
+        String HasC6 = "0";
+        String HasH2 = "0";
+        String HasTSLR = "0";
 
         response->print("{");
-#ifdef C6_OTA_FLASHING
-        response->print("\"C6\": \"1\", ");
-#else
-        response->print("\"C6\": \"0\", ");
+#ifdef HAS_H2
+        HasH2 = "1";
+#elif defined(HAS_TSLR)
+        HasTSLR = "1";
+#elif defined(C6_OTA_FLASHING)
+        HasC6 = "1";
 #endif
+        response->print("\"C6\": \"" + HasC6 + "\", ");
+        response->print("\"H2\": \"" + HasH2 + "\", ");
+        response->print("\"TLSR\": \"" + HasTSLR + "\", ");
 #ifdef SAVE_SPACE
         response->print("\"savespace\": \"1\", ");
 #else

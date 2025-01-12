@@ -9,6 +9,14 @@
 #include "storage.h"
 #include "tag_db.h"
 #include "web.h"
+#include "espflasher.h"
+#include "util.h"
+
+#define LOG(format, ... ) Serial.printf(format,## __VA_ARGS__)
+
+#ifndef FLASHER_DEBUG_PORT
+#define FLASHER_DEBUG_PORT 2
+#endif
 
 esp_loader_error_t connect_to_target(uint32_t higher_transmission_rate) {
     esp_loader_connect_args_t connect_config = ESP_LOADER_CONNECT_DEFAULT();
@@ -120,150 +128,197 @@ esp_loader_error_t flash_binary(String &file_path, size_t address) {
 
 bool downloadAndWriteBinary(String &filename, const char *url) {
     HTTPClient binaryHttp;
-    Serial.println(url);
+    bool Ret = false;
+    bool bHaveFsMutex = false;
+
+    LOG("downloadAndWriteBinary: url %s\n",url);
     binaryHttp.begin(url);
     binaryHttp.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-    int binaryResponseCode = binaryHttp.GET();
-    Serial.println(binaryResponseCode);
-    if (binaryResponseCode == HTTP_CODE_OK) {
+    do {
+        int binaryResponseCode = binaryHttp.GET();
+        if(binaryResponseCode != HTTP_CODE_OK) {
+            wsSerial("http error " + String(binaryResponseCode) + " fetching " + String(url));
+            break;
+        }
         int contentLength = binaryHttp.getSize();
-        Serial.println(contentLength);
+        LOG("contentLength %d\r\n",contentLength);
+        if(contentLength < 0) {
+            wsSerial("Couldn't get contentLength");
+            break;
+        }
         xSemaphoreTake(fsMutex, portMAX_DELAY);
+        bHaveFsMutex = true;
         File file = contentFS->open(filename, "wb");
-        if (file) {
-            wsSerial("downloading " + String(filename));
-            WiFiClient *stream = binaryHttp.getStreamPtr();
-            uint8_t buffer[1024];
-            size_t totalBytesRead = 0;
-            time_t timeOut = millis() + 5000;
-            // while (stream->available()) {
-            while (millis() < timeOut) {
-                size_t bytesRead = stream->readBytes(buffer, sizeof(buffer));
+        if(!file) {
+            wsSerial("file open error " + String(filename));
+            break;
+        }
+        wsSerial("downloading " + String(filename));
+        WiFiClient *stream = binaryHttp.getStreamPtr();
+        uint8_t buffer[1024];
+        size_t totalBytesRead = 0;
+     // timeout if we don't average at least 1k bytes/second
+        unsigned long timeOut = millis() + contentLength;
+        while(stream->connected() && totalBytesRead < contentLength) {
+            size_t bytesRead;
+            size_t bytesToRead;
+            if(stream->available()) {
+                bytesToRead = min(sizeof(buffer), (size_t) stream->available());
+                bytesRead = stream->readBytes(buffer, bytesToRead);
+                if(bytesRead == 0 || millis() > timeOut) {
+                    wsSerial("Download time out");
+                    break;
+                }
                 file.write(buffer, bytesRead);
                 totalBytesRead += bytesRead;
-                if (totalBytesRead == contentLength) break;
+                vTaskDelay(1 / portTICK_PERIOD_MS);
+            } else {
+                vTaskDelay(10 / portTICK_PERIOD_MS);
             }
-            file.close();
-            xSemaphoreGive(fsMutex);
-            binaryHttp.end();
-
-            file = contentFS->open(filename, "r");
-            if (file) {
-                if (totalBytesRead == contentLength || (contentLength == 0 && file.size() > 0)) {
-                    file.close();
-                    return true;
-                }
-                wsSerial("Download failed, " + String(file.size()) + " bytes");
-                file.close();
-            }
-        } else {
-            xSemaphoreGive(fsMutex);
-            wsSerial("file open error " + String(filename));
         }
-    } else {
-        wsSerial("http error " + String(binaryResponseCode) + " fetching " + String(url));
-    }
+        file.close();
+
+        if(!stream->connected()) {
+           wsSerial("Connection dropped during transfer");
+           break;
+        }
+        file = contentFS->open(filename, "r");
+        if(!file) {
+            wsSerial("file open error " + String(filename));
+            break;
+        }
+        if(file.size() == contentLength) {
+            Ret = true;
+        } else {
+            wsSerial("Download failed, " + String(file.size()) + " bytes");
+        }
+        file.close();
+    } while(false);
+    binaryHttp.setReuse(false);
     binaryHttp.end();
-    return false;
+    if(bHaveFsMutex) {
+        xSemaphoreGive(fsMutex);
+    }
+
+    return Ret;
 }
 
-bool doC6flash(uint8_t doDownload) {
-    String filenameFirmwareLocal = "/firmware.json";
+bool FlashC6_H2(const char *RepoUrl) {
+    String JsonFilename = "/firmware_" SHORT_CHIP_NAME ".json" ;
+    bool Ret = false;
+    bool bLoaderInit = false;
+    bool bDownload = strlen(RepoUrl) > 0;
+    int retry;
     DynamicJsonDocument jsonDoc(1024);
-    if (doDownload) {
-        const String githubUrl = "https://raw.githubusercontent.com/" + config.repo + "/master/binaries/ESP32-C6/firmware.json";
-        if (downloadAndWriteBinary(filenameFirmwareLocal, githubUrl.c_str())) {
-            File readfile = contentFS->open(filenameFirmwareLocal, "r");
-            if (!readfile) {
-                Serial.println("load firmware.json: Failed to open file");
-                return false;
-            }
-            DeserializationError jsonError = deserializeJson(jsonDoc, readfile);
 
-            if (!jsonError) {
-                JsonArray jsonArray = jsonDoc.as<JsonArray>();
-                for (JsonObject obj : jsonArray) {
-                    String filename = "/" + obj["filename"].as<String>();
-                    // String binaryUrl = "https://raw.githubusercontent.com/" + config.repo + "/master/binaries/ESP32-C6" + String(filename);
-                    String binaryUrl = "http://www.openepaperlink.eu/binaries/ESP32-C6" + String(filename);
-                    for (int retry = 0; retry < 10; retry++) {
-                        if (downloadAndWriteBinary(filename, binaryUrl.c_str())) {
-                            break;
-                        }
-                        wsSerial("Retry " + String(retry));
-                        if (retry < 9) {
-                            delay(1000);
-                        } else {
-                            return false;
-                        }
-                    }
-                }
-            } else {
-                wsSerial("json error fetching " + String(githubUrl));
-                return false;
+    LOG("%s#%d: ",__FUNCTION__,__LINE__); util::printHeap();
+
+    do {
+        if(bDownload) {
+           String FileUrl = RepoUrl + JsonFilename;
+            if(!downloadAndWriteBinary(JsonFilename, FileUrl.c_str())) {
+               LOG("%s#%d: ",__FUNCTION__,__LINE__); util::printHeap();
+                break;
             }
-        } else {
-            return false;
         }
-    } else {
-        File readfile = contentFS->open(filenameFirmwareLocal, "r");
-        if (!readfile) {
-            Serial.println("load local firmware.json: Failed to open file");
-            return false;
+
+        File readfile = contentFS->open(JsonFilename, "r");
+        if(!readfile) {
+            Serial.println("load " + JsonFilename + ": Failed to open file");
+            break;
         }
         DeserializationError jsonError = deserializeJson(jsonDoc, readfile);
-    }
 
-    const loader_esp32_config_t config = {
-        .baud_rate = 115200,
-        .uart_port = 2,
-        .uart_rx_pin = FLASHER_DEBUG_TXD,
-        .uart_tx_pin = FLASHER_DEBUG_RXD,
-        .reset_trigger_pin = FLASHER_AP_RESET,
-        .gpio0_trigger_pin = FLASHER_DEBUG_PROG,
-    };
+        if(jsonError) {
+            wsSerial(String("json error parsing") + JsonFilename);
+            break;
+        }
 
-    if (loader_port_esp32_init(&config) != ESP_LOADER_SUCCESS) {
-        wsSerial("Serial initialization failed");
-        loader_port_esp32_deinit();
-        return false;
-    }
+        if(!bDownload) {
+           Ret = true;
+           break;
+        }
 
-    if (connect_to_target(115200) == ESP_LOADER_SUCCESS) {
-        if (esp_loader_get_target() == ESP32C6_CHIP) {
-            wsSerial("Connected to ESP32-C6");
-            int maxRetries = 5;
-            esp_loader_error_t err;
+        JsonArray jsonArray = jsonDoc.as<JsonArray>();
+        for(JsonObject obj : jsonArray) {
+            String filename = "/" + obj["filename"].as<String>();
+            String binaryUrl = RepoUrl + filename;
 
-            JsonArray jsonArray = jsonDoc.as<JsonArray>();
-            for (JsonObject obj : jsonArray) {
-                String filename = "/" + obj["filename"].as<String>();
-                const char *addressStr = obj["address"];
-                uint32_t address = strtoul(addressStr, NULL, 16);
-
-                for (int retry = 0; retry < maxRetries; retry++) {
-                    err = flash_binary(filename, address);
-                    if (err == ESP_LOADER_SUCCESS) break;
-                    Serial.printf("Flash failed with error %d. Retrying...\n", err);
+            for(retry = 0; retry < 10; retry++) {
+                if(downloadAndWriteBinary(filename, binaryUrl.c_str())) {
+                    break;
+                }
+                wsSerial("Retry " + String(retry));
+                if(retry < 9) {
                     delay(1000);
                 }
-                if (err != ESP_LOADER_SUCCESS) {
-                    loader_port_esp32_deinit();
-                    return false;
-                }
             }
-
-            Serial.println("Done!");
-        } else {
-            wsSerial("Connected to wrong ESP32 type");
-            loader_port_esp32_deinit();
-            return false;
+            if(retry == 10) {
+                break;
+            }
         }
-    } else {
-        wsSerial("Connection to the C6 failed");
+        if(retry < 10) {
+           Ret = true;
+        }
+    } while(false);
+
+    if(Ret == true) do {
+       Ret = false;
+        const loader_esp32_config_t config = {
+            .baud_rate = 115200,
+            .uart_port = FLASHER_DEBUG_PORT,
+            .uart_rx_pin = FLASHER_DEBUG_TXD,
+            .uart_tx_pin = FLASHER_DEBUG_RXD,
+            .reset_trigger_pin = FLASHER_AP_RESET,
+            .gpio0_trigger_pin = FLASHER_DEBUG_PROG,
+        };
+
+        bLoaderInit = true;
+        if(loader_port_esp32_init(&config) != ESP_LOADER_SUCCESS) {
+            wsSerial("Serial initialization failed");
+            break;
+        }
+
+        if(connect_to_target(115200) != ESP_LOADER_SUCCESS) {
+            wsSerial("Connection to the " SHORT_CHIP_NAME " failed");
+            break;
+        }
+
+        if(esp_loader_get_target() != ESP_CHIP_TYPE) {
+            wsSerial("Connected to wrong ESP32 type");
+            break;
+        }
+        wsSerial("Connected to ESP32-" SHORT_CHIP_NAME);
+        int maxRetries = 5;
+        esp_loader_error_t err;
+
+        JsonArray jsonArray = jsonDoc.as<JsonArray>();
+        for(JsonObject obj : jsonArray) {
+            String filename = "/" + obj["filename"].as<String>();
+            const char *addressStr = obj["address"];
+            uint32_t address = strtoul(addressStr, NULL, 16);
+
+            for(int retry = 0; retry < maxRetries; retry++) {
+                err = flash_binary(filename, address);
+                if(err == ESP_LOADER_SUCCESS) {
+                   Ret = true;
+                   break;
+                }
+                Serial.printf("Flash failed with error %d. Retrying...\n", err);
+                delay(1000);
+            }
+            if(err != ESP_LOADER_SUCCESS) {
+                break;
+            }
+        }
+        Serial.println("Done!");
+    } while(false);
+
+    if(bLoaderInit) {
         loader_port_esp32_deinit();
-        return false;
     }
-    loader_port_esp32_deinit();
-    return true;
+
+    LOG("%s#%d: ",__FUNCTION__,__LINE__); util::printHeap();
+    return Ret;
 }
+
