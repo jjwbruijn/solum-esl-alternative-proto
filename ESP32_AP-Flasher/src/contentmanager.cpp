@@ -1053,32 +1053,61 @@ void drawForecast(String &filename, JsonObject &cfgobj, const tagRecord *taginfo
 
 int getImgURL(String &filename, String URL, time_t fetched, imgParam &imageParams, String MAC) {
     // https://images.klari.net/kat-bw29.jpg
+    const int MAX_REDIRECTS = 5;
+    int redirectCount = 0;
+    String currentURL = URL;
+    
+    while (redirectCount < MAX_REDIRECTS) {
+        HTTPClient http;
+        logLine("http getImgURL " + currentURL);
+        http.begin(currentURL);
+        http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+        http.addHeader("If-Modified-Since", formatHttpDate(fetched));
+        http.addHeader("X-ESL-MAC", MAC);
+        http.setTimeout(5000);  // timeout in ms
+        
+        const int httpCode = http.GET();
+        
+        if (httpCode == 200) {
+            xSemaphoreTake(fsMutex, portMAX_DELAY);
+            File f = contentFS->open("/temp/temp.jpg", "w");
+            if (f) {
+                http.writeToStream(&f);
+                f.close();
+                xSemaphoreGive(fsMutex);
+                jpg2buffer("/temp/temp.jpg", filename, imageParams);
+            } else {
+                xSemaphoreGive(fsMutex);
+            }
+            http.end();
+            return httpCode;
+        } else if (httpCode == 302 || httpCode == 301) {
+            String newURL = http.header("Location");  // Try canonical form first
+            if (newURL.isEmpty()) {
+                // Try lowercase, the github release assets is lowercase
+                newURL = http.header("location");
+            }
+            if (newURL.isEmpty()) {
+                wsErr("Empty redirect URL from " + currentURL);
+                http.end();
+                return httpCode;
+            }
 
-    HTTPClient http;
-    logLine("http getImgURL " + URL);
-    http.begin(URL);
-    http.addHeader("If-Modified-Since", formatHttpDate(fetched));
-    http.addHeader("X-ESL-MAC", MAC);
-    http.setTimeout(5000);  // timeout in ms
-    const int httpCode = http.GET();
-    if (httpCode == 200) {
-        xSemaphoreTake(fsMutex, portMAX_DELAY);
-        File f = contentFS->open("/temp/temp.jpg", "w");
-        if (f) {
-            http.writeToStream(&f);
-            f.close();
-            xSemaphoreGive(fsMutex);
-            jpg2buffer("/temp/temp.jpg", filename, imageParams);
-        } else {
-            xSemaphoreGive(fsMutex);
-        }
-    } else {
-        if (httpCode != 304) {
-            wsErr("http " + URL + " " + String(httpCode));
+            logLine("redirect to " + newURL);
+            currentURL = newURL;
+            redirectCount++;
+            http.end();
+            continue;
+        } else if (httpCode != 304) {
+            wsErr("http " + currentURL + " " + String(httpCode));
+            http.end();
+            return httpCode;
         }
     }
-    http.end();
-    return httpCode;
+    
+    // only redirect too many times reaches here
+    wsErr("Too many redirects for " + URL);
+    return -1;
 }
 
 #ifdef CONTENT_RSS
