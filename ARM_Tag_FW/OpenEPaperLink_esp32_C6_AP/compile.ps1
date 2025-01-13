@@ -1,4 +1,4 @@
-&(Join-Path $env:USERPROFILE '\esp\esp-idf\export.ps1')
+&(Join-Path $env:USERPROFILE '\esp\v5.3.2\esp-idf\export.ps1')
 
 idf.py fullclean
 

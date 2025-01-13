@@ -7,16 +7,20 @@
 
 #include "storage.h"
 #include "tag_db.h"
-#include "wifimanager.h"
+#ifndef W5500_ETH
+  #include "wifimanager.h"
+#endif
 
 void timeSyncCallback(struct timeval* tv) {
     Serial.println("time succesfully synced");
 }
 
 void initTime(void* parameter) {
-    if (WiFi.status() != WL_CONNECTED) {
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-    }
+    #ifndef W5500_ETH
+        if (WiFi.status() != WL_CONNECTED) {
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+        }
+    #endif
     sntp_set_time_sync_notification_cb(timeSyncCallback);
     sntp_set_sync_interval(300 * 1000);
     configTzTime(config.timeZone, "time.cloudflare.com", "pool.ntp.org", "time.nist.gov");

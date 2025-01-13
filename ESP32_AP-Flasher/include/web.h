@@ -1,7 +1,11 @@
 
 #include <Arduino.h>
 #include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
+#ifdef W5500_ETH
+  #include <AsyncWebServer_ESP32_SC_W5500.h>
+#else
+  #include <ESPAsyncWebServer.h>
+#endif
 
 void init_web();
 void doImageUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);

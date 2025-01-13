@@ -3,7 +3,11 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
+#ifdef W5500_ETH
+  #include <AsyncWebServer_ESP32_SC_W5500.h>
+#else
+  #include <ESPAsyncWebServer.h>
+#endif
 #include <ESPmDNS.h>
 #include <FS.h>
 #include <Preferences.h>
@@ -25,7 +29,9 @@
 #include "system.h"
 #include "tag_db.h"
 #include "udp.h"
-#include "wifimanager.h"
+#ifndef W5500_ETH
+  #include "wifimanager.h"
+#endif
 
 #ifdef HAS_EXT_FLASHER
 #include "webflasher.h"
@@ -33,7 +39,9 @@
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
-WifiManager wm;
+#ifndef W5500_ETH
+    WifiManager wm;
+#endif
 
 SemaphoreHandle_t wsMutex;
 uint32_t lastssidscan = 0;
@@ -92,9 +100,15 @@ void wsSendSysteminfo() {
 
     sys["apstate"] = apInfo.state;
     sys["runstate"] = config.runStatus;
-    sys["rssi"] = WiFi.RSSI();
-    sys["wifistatus"] = WiFi.status();
-    sys["wifissid"] = WiFi.SSID();
+	#ifndef W5500_ETH
+        sys["rssi"] = WiFi.RSSI();
+        sys["wifistatus"] = WiFi.status();
+        sys["wifissid"] = WiFi.SSID();
+	#else
+	    sys["rssi"] = -100;
+        sys["wifistatus"] = WL_CONNECTED;
+        sys["wifissid"] = "ETH";
+	#endif
     sys["uptime"] = esp_timer_get_time() / 1000000;
 
     static uint8_t day = 0;
@@ -107,7 +121,12 @@ void wsSendSysteminfo() {
         strftime(timeBuffer, sizeof(timeBuffer), languageDateFormat[0].c_str(), &timeinfo);
         setVarDB("ap_date", timeBuffer);
     }
-    setVarDB("ap_ip", WiFi.localIP().toString());
+    #ifndef W5500_ETH
+        IPAddress IP = WiFi.localIP();
+    #else
+        IPAddress IP = ETH.localIP();
+    #endif
+    setVarDB("ap_ip", IP.toString());
 
 #ifdef HAS_SUBGHZ
     String ApChanString = String(apInfo.channel);
@@ -241,12 +260,85 @@ uint8_t wsClientCount() {
     return ws.count();
 }
 
+
+#ifdef W5500_ETH
+	void Ethernet_event(WiFiEvent_t event)
+	{
+	  switch (event)
+	  {
+	    case ARDUINO_EVENT_ETH_START:
+	      AWS_LOG(F("\nETH Started"));
+
+	      uint8_t  address[6];
+	      WiFi.macAddress(address);
+	      char hexmac1[40];
+	      sprintf(hexmac1, "openepaperlink-%02X%02X%02X", address[3],address[4], address[5]);
+	      ETH.setHostname(hexmac1);
+	      break;
+
+	    case ARDUINO_EVENT_ETH_CONNECTED:
+	      AWS_LOG(F("ETH Connected"));
+	      break;
+
+	    case ARDUINO_EVENT_ETH_GOT_IP:
+	      if (!ESP32_W5500_eth_connected)
+	      {
+	        AWS_LOG3(F("ETH MAC: "), ETH.macAddress(), F(", IPv4: "), ETH.localIP());
+
+	        if (ETH.fullDuplex())
+	        {
+	          AWS_LOG0(F("FULL_DUPLEX, "));
+	        }
+	        else
+	        {
+	          AWS_LOG0(F("HALF_DUPLEX, "));
+	        }
+
+	        AWS_LOG1(ETH.linkSpeed(), F("Mbps"));
+
+	        ESP32_W5500_eth_connected = true;
+	      }
+
+	      break;
+
+	    case ARDUINO_EVENT_ETH_DISCONNECTED:
+	      AWS_LOG("ETH Disconnected");
+	      ESP32_W5500_eth_connected = false;
+	      break;
+
+	    case ARDUINO_EVENT_ETH_STOP:
+	      AWS_LOG("ETH Stopped");
+	      ESP32_W5500_eth_connected = false;
+	      break;
+
+	    default:
+	      break;
+	  }
+	}
+#endif
+
 void init_web() {
     wsMutex = xSemaphoreCreateMutex();
-    WiFi.mode(WIFI_STA);
-    WiFi.setTxPower(static_cast<wifi_power_t>(config.wifiPower));
+	
+    #ifndef W5500_ETH
+        WiFi.mode(WIFI_STA);
+        WiFi.setTxPower(static_cast<wifi_power_t>(config.wifiPower));
 
-    wm.connectToWifi();
+        wm.connectToWifi();
+    #else	
+	    uint8_t  address[6];
+	    WiFi.macAddress(address);
+
+	    WiFi.onEvent(Ethernet_event);
+
+	    ETH.begin( ETH_MISO_GPIO, ETH_MOSI_GPIO, ETH_SCK_GPIO, ETH_CS_GPIO, ETH_INT_GPIO, SPI_CLOCK_MHZ, ETH_SPI_HOST, address );
+
+	    ESP32_W5500_waitForConnect();
+
+		vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+	    init_udp();
+	#endif
 
     server.addHandler(new SPIFFSEditor(*contentFS));
 

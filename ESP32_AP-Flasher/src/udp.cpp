@@ -34,7 +34,12 @@ void UDPcomm::init() {
     if (config.discovery == 0) {
         if (udp.listenMulticast(UDPIP, UDPPORT)) {
             udp.onPacket([this](AsyncUDPPacket packet) {
-                if (packet.remoteIP() != WiFi.localIP()) {
+			    #ifndef W5500_ETH
+			        IPAddress IP1 = WiFi.localIP();
+			    #else
+			        IPAddress IP1 = ETH.localIP();
+			    #endif
+                if (packet.remoteIP() != IP1) {
                     this->processPacket(packet);
                 }
             });
@@ -42,7 +47,12 @@ void UDPcomm::init() {
     } else {
         if (udp.listen(UDPPORT)) {
             udp.onPacket([this](AsyncUDPPacket packet) {
-                if (packet.isBroadcast() && packet.remoteIP() != WiFi.localIP()) {
+			    #ifndef W5500_ETH
+			        IPAddress IP2 = WiFi.localIP();
+			    #else
+			        IPAddress IP2 = ETH.localIP();
+			    #endif
+                if (packet.isBroadcast() && packet.remoteIP() != IP2) {
                     this->processPacket(packet);
                 }
             });
@@ -87,8 +97,13 @@ void UDPcomm::processPacket(AsyncUDPPacket packet) {
             break;
         }
         case PKT_APLIST_REQ: {
+		    #ifndef W5500_ETH
+		        IPAddress IP = WiFi.localIP();
+		    #else
+		        IPAddress IP = ETH.localIP();
+		    #endif
             APlist APitem;
-            APitem.src = WiFi.localIP();
+            APitem.src = IP;
             strcpy(APitem.alias, config.alias);
             APitem.channelId = curChannel.channel;
             APitem.tagCount = getTagCount();
@@ -153,8 +168,13 @@ void autoselect(void* pvParameters) {
 }
 
 void UDPcomm::getAPList() {
+    #ifndef W5500_ETH
+        IPAddress IP = WiFi.localIP();
+    #else
+        IPAddress IP = ETH.localIP();
+    #endif
     APlist APitem;
-    APitem.src = WiFi.localIP();
+    APitem.src = IP;
     strcpy(APitem.alias, config.alias);
     APitem.channelId = curChannel.channel;
     APitem.tagCount = getTagCount();
