@@ -1,10 +1,10 @@
 [{
-	"filename": "bootloader.bin",
+	"filename": "bootloader_C6.bin",
 	"address": "0x0",
 	"version": "0001"
 },
 {
-	"filename": "partition-table.bin",
+	"filename": "partition-table_C6.bin",
 	"address": "0x8000",
 	"version": "0001"
 },

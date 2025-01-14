@@ -54,10 +54,9 @@ window.addEventListener("loadConfig", function () {
 				$(".logo").innerHTML = data.alias;
 				this.document.title = data.alias;
 			}
-			if (data.C6 == 1) {
+			if (data.C6 == 1 || (data.H2 && data.H2 == 1)) {
 				var optionToRemove = $("#apcfgchid").querySelector('option[value="27"]');
 				if (optionToRemove) $("#apcfgchid").removeChild(optionToRemove);
-				$('#updateC6Option').style.display = 'block';
 			}
 			if (data.hasFlasher == 1) {
 				$('[data-target="flashtab"]').style.display = 'block';

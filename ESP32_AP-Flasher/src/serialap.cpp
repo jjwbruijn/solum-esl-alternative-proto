@@ -14,6 +14,8 @@
 #include "web.h"
 #include "zbs_interface.h"
 
+#define LOG(format, ... ) printf(format,## __VA_ARGS__)
+
 QueueHandle_t rxCmdQueue;
 SemaphoreHandle_t txActive;
 
@@ -25,7 +27,9 @@ SemaphoreHandle_t txActive;
 volatile uint8_t cmdReplyValue = CMD_REPLY_WAIT;
 
 #define AP_SERIAL_PORT Serial1
+#ifndef FLASHER_DEBUG_SHARED
 volatile bool rxSerialStopTask2 = false;
+#endif
 
 uint8_t channelList[6];
 struct espSetChannelPower curChannel = {0, 11, 10};
@@ -41,6 +45,17 @@ struct espSetChannelPower curChannel = {0, 11, 10};
 #define AP_ACTIVITY_MAX_INTERVAL 30 * 1000
 volatile uint32_t lastAPActivity = 0;
 struct APInfoS apInfo;
+
+enum ApSerialState {
+   SERIAL_STATE_NONE,
+   SERIAL_STATE_INITIALIZED,
+   SERIAL_STATE_STARTING,
+   SERIAL_STATE_RUNNING,
+   SERIAL_STATE_STOP,
+   SERIAL_STATE_STOPPED
+};
+
+volatile ApSerialState gSerialTaskState;
 
 struct rxCmd {
     uint8_t* data;
@@ -155,6 +170,21 @@ void setAPstate(bool isOnline, uint8_t state) {
     #endif
     rgbIdlePeriod = (isOnline ? 767 : 255);
     if (isOnline) rgbIdle();
+#endif
+#ifdef FLASHER_DEBUG_SHARED
+// Flasher shares port with AP comms
+    if(state == AP_STATE_FLASHING) {
+        LOG("Shared COM port, gSerialTaskState %d\n",gSerialTaskState);
+        gSerialTaskState = SERIAL_STATE_STOP;
+        for(int i = 0; i < 100; i++) {
+            vTaskDelay(1 / portTICK_RATE_MS);
+            if(gSerialTaskState == SERIAL_STATE_STOPPED) {
+                gSerialTaskState = SERIAL_STATE_NONE;
+                break;
+            }
+        }
+        LOG("gSerialTaskState %d\n",gSerialTaskState);
+    }
 #endif
 }
 
@@ -435,7 +465,9 @@ void rxSerialTask(void* parameter) {
     static char lastchar = 0;
     static uint8_t charindex = 0;
 
-    while (1) {
+    gSerialTaskState = SERIAL_STATE_RUNNING;
+    LOG("rxSerialTask starting\n");
+    while (gSerialTaskState == SERIAL_STATE_RUNNING) {
         while (AP_SERIAL_PORT.available()) {
             lastchar = AP_SERIAL_PORT.read();
             switch (RXState) {
@@ -666,9 +698,14 @@ void rxSerialTask(void* parameter) {
         }
         vTaskDelay(1 / portTICK_PERIOD_MS);
     }  // end of while(1)
+
+    AP_SERIAL_PORT.end(false);
+    gSerialTaskState = SERIAL_STATE_STOPPED;
+    LOG("rxSerialTask stopped\n");
+    vTaskDelete(NULL);
 }
 
-#ifdef FLASHER_DEBUG_RXD
+#if defined(FLASHER_DEBUG_RXD) && !defined(FLASHER_DEBUG_SHARED)
 void rxSerialTask2(void* parameter) {
     char lastchar = 0;
     time_t startTime = millis();
@@ -747,11 +784,29 @@ void segmentedShowIp() {
 }
 
 bool bringAPOnline() {
-    #ifdef BLE_ONLY
+#ifdef BLE_ONLY
     apInfo.state = AP_STATE_NORADIO;
-    #endif
+#endif
     if (apInfo.state == AP_STATE_NORADIO) return true;
     if (apInfo.state == AP_STATE_FLASHING) return false;
+
+    if(gSerialTaskState != SERIAL_STATE_INITIALIZED) {
+#if (AP_PROCESS_PORT == FLASHER_AP_PORT)
+       AP_SERIAL_PORT.begin(115200, SERIAL_8N1, FLASHER_AP_RXD, FLASHER_AP_TXD);
+#elif defined(HAS_EXT_FLASHER)
+   #if (AP_PROCESS_PORT == FLASHER_EXT_PORT)
+       AP_SERIAL_PORT.begin(115200, SERIAL_8N1, FLASHER_EXT_RXD, FLASHER_EXT_TXD);
+   #elif (AP_PROCESS_PORT == FLASHER_ALTRADIO_PORT)
+       AP_SERIAL_PORT.begin(115200, SERIAL_8N1, FLASHER_AP_RXD, FLASHER_AP_TXD);
+   #endif
+#endif
+       gSerialTaskState = SERIAL_STATE_INITIALIZED;
+    }
+    if(gSerialTaskState != SERIAL_STATE_RUNNING) {
+       gSerialTaskState = SERIAL_STATE_STARTING;
+       xTaskCreate(rxSerialTask, "rxSerialTask", 1750, NULL, 11, NULL);
+       vTaskDelay(500 / portTICK_PERIOD_MS);
+    }
     setAPstate(false, AP_STATE_OFFLINE);
     // try without rebooting
     AP_SERIAL_PORT.updateBaudRate(115200);
@@ -823,25 +878,12 @@ void APTask(void* parameter) {
         return;
     }
 
-#if (AP_PROCESS_PORT == FLASHER_AP_PORT)
-    AP_SERIAL_PORT.begin(115200, SERIAL_8N1, FLASHER_AP_RXD, FLASHER_AP_TXD);
-#endif
-#ifdef HAS_EXT_FLASHER
-#if (AP_PROCESS_PORT == FLASHER_EXT_PORT)
-    AP_SERIAL_PORT.begin(115200, SERIAL_8N1, FLASHER_EXT_RXD, FLASHER_EXT_TXD);
-#endif
-#if (AP_PROCESS_PORT == FLASHER_ALTRADIO_PORT)
-    AP_SERIAL_PORT.begin(115200, SERIAL_8N1, FLASHER_AP_RXD, FLASHER_AP_TXD);
-#endif
-#endif
 
     xTaskCreate(rxCmdProcessor, "rxCmdProcessor", 6000, NULL, 15, NULL);
-    xTaskCreate(rxSerialTask, "rxSerialTask", 1750, NULL, 11, NULL);
-#ifdef FLASHER_DEBUG_RXD
+#if defined(FLASHER_DEBUG_RXD) && !defined(FLASHER_DEBUG_SHARED)
     xTaskCreate(rxSerialTask2, "rxSerialTask2", 1750, NULL, 2, NULL);
-#endif
-
     vTaskDelay(500 / portTICK_PERIOD_MS);
+#endif
     bringAPOnline();
 
 #ifndef C6_OTA_FLASHING

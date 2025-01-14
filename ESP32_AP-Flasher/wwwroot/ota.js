@@ -7,8 +7,27 @@ let running = false;
 let errors = 0;
 let env = '', currentVer = '', currentBuildtime = 0;
 let buttonState = false;
+let gIsC6 = false;
+let gIsH2 = false;
+let gModuleType = '';
+let gShortName = '';
+let gCurrentRfVer = 0;
 
 export async function initUpdate() {
+    if (apConfig.C6 == 1) {
+        gIsC6 = true;
+        gModuleType = "ESP32-C6";
+        gShortName = "C6";
+    }
+    else if(apConfig?.H2 && apConfig.H2 == 1) {
+        gIsH2 = true;
+        gModuleType = "ESP32-H2";
+        gShortName = "H2";
+    }
+    else {
+        gModuleType = "Unknown"
+    }
+    $('#radio_release_title').innerHTML = gModuleType + " Firmware";
 
     const response = await fetch("version.txt");
     let filesystemversion = await response.text();
@@ -30,7 +49,7 @@ export async function initUpdate() {
     $('#selectRepo').style.display = 'inline-block';
     $('#repoWarning').style.display = 'none';
 
-    const sysinfoPromise = fetch("sysinfo")
+    const sdata = await fetch("sysinfo")
         .then(response => {
             if (response.status != 200) {
                 print("Error fetching sysinfo: " + response.status, "red");
@@ -48,98 +67,170 @@ export async function initUpdate() {
             print('Error fetching sysinfo: ' + error, "red");
         });
 
-    const repoPromise = fetch(repoUrl)
-        .then(response => response.json())
+    if (sdata.env) {
+        print(`current env:        ${sdata.env}`);
+        print(`build date:         ${formatEpoch(sdata.buildtime)}`);
+        print(`esp32 version:      ${sdata.buildversion}`);
+        if(gModuleType != '') {
+            var hex_ver = '0000' + sdata.ap_version.toString(16);
+            print(`${gModuleType} version:   ${hex_ver.slice(-4)}`);
+        }
+        print(`filesystem version: ${filesystemversion}`);
+        print(`psram size:         ${sdata.psramsize}`);
+        print(`flash size:         ${sdata.flashsize}`);
+        print("--------------------------", "gray");
+        env = apConfig.env || sdata.env;
+        if (sdata.env != env) {
+            print(`Warning: you selected a build environment ${env} which is\ndifferent than the currently used ${sdata.env}.\nOnly update the firmware with a mismatched build environment if\nyou know what you're doing.`, "yellow");
+        }
+        currentVer = sdata.buildversion;
+        currentBuildtime = sdata.buildtime;
+        gCurrentRfVer = sdata.ap_version;
+        if (sdata.rollback) $("#rollbackOption").style.display = 'block';
+        $('#environment').value = env;
+    }
 
-
-    Promise.all([sysinfoPromise, repoPromise])
-        .then(([sdata, rdata]) => {
-
-            if (sdata.env) {
-                print(`current env:        ${sdata.env}`);
-                print(`build date:         ${formatEpoch(sdata.buildtime)}`);
-                print(`esp32 version:      ${sdata.buildversion}`);
-                print(`filesystem version: ${filesystemversion}`);
-                print(`psram size:         ${sdata.psramsize}`);
-                print(`flash size:         ${sdata.flashsize}`);
-                if (sdata.hasC6) {
-                    print(`ESP-C6/H2 version:  0x${parseInt(sdata.C6version).toString(16).toUpperCase()}`);
-                }
-                print("--------------------------", "gray");
-                env = apConfig.env || sdata.env;
-                if (sdata.env != env) {
-                    print(`Warning: you selected a build environment ${env} which is\ndifferent than the currently used ${sdata.env}.\nOnly update the firmware with a mismatched build environment if\nyou know what you're doing.`, "yellow");
-                }
-                currentVer = sdata.buildversion;
-                currentBuildtime = sdata.buildtime;
-                if (sdata.rollback) $("#rollbackOption").style.display = 'block';
-                $('#environment').value = env;
+	  const rdata = await fetch(repoUrl).then(response => response.json())
+    const JsonName = 'firmware_' + gShortName + '.json';
+    const releaseDetails = rdata.map(release => {
+        const assets = release.assets;
+        const filesJsonAsset = assets.find(asset => asset.name === 'filesystem.json');
+        const binariesJsonAsset = assets.find(asset => asset.name === 'binaries.json');
+        const containsEnv = assets.find(asset => asset.name === env + '.bin');
+        const firmwareAsset = assets.find(asset => asset.name === JsonName);
+        if (filesJsonAsset && binariesJsonAsset && containsEnv) {
+            return {
+                html_url: release.html_url,
+                tag_name: release.tag_name,
+                name: release.name,
+                date: formatDateTime(release.published_at),
+                author: release.author.login,
+                file_url: filesJsonAsset.browser_download_url,
+                bin_url: binariesJsonAsset.browser_download_url,
+                firmware_url: firmwareAsset?.browser_download_url,
             }
+        };
+    })
 
-            const releaseDetails = rdata.map(release => {
-                const assets = release.assets;
-                const filesJsonAsset = assets.find(asset => asset.name === 'filesystem.json');
-                const binariesJsonAsset = assets.find(asset => asset.name === 'binaries.json');
-                const containsEnv = assets.find(asset => asset.name === env + '.bin');
-                if (filesJsonAsset && binariesJsonAsset && containsEnv) {
-                    return {
-                        html_url: release.html_url,
-                        tag_name: release.tag_name,
-                        name: release.name,
-                        date: formatDateTime(release.published_at),
-                        author: release.author.login,
-                        file_url: filesJsonAsset.browser_download_url,
-                        bin_url: binariesJsonAsset.browser_download_url
-                    }
-                };
-            });
-            
-            const easyupdate = $('#easyupdate');
-            if (releaseDetails.length === 0) {
-                easyupdate.innerHTML = ("No releases found.");
+    if (releaseDetails.length === 0) {
+        easyupdate.innerHTML = ("No releases found.");
+    } else {
+        const release = releaseDetails[0];
+        if (release?.tag_name) {
+            if (release.tag_name == currentVer) {
+                easyupdate.innerHTML = `Version ${currentVer}. You are up to date`;
+            } else if (release.date < formatEpoch(currentBuildtime - 30 * 60)) {
+                easyupdate.innerHTML = `Your version is newer than the latest release date.<br>Are you the developer? :-)`;
             } else {
-                const release = releaseDetails[0];
-                if (release?.tag_name) {
-                    if (normalizeVersion(release.tag_name) === normalizeVersion(currentVer)) {
-                        easyupdate.innerHTML = `Version ${currentVer}. You are up to date`;
-                    } else if (release.date < formatEpoch(currentBuildtime - 30 * 60)) {
-                        easyupdate.innerHTML = `Your version is newer than the latest release date.<br>Are you the developer? :-)`;
-                    } else {
-                        easyupdate.innerHTML = `An update from version ${currentVer} to version ${release.tag_name} is available.<button onclick="otamodule.updateAll('${release.bin_url}','${release.file_url}','${release.tag_name}')">Update now!</button>`;
-                    }
-                }
+                easyupdate.innerHTML = `An update from version ${currentVer} to version ${release.tag_name} is available.<button onclick="otamodule.updateAll('${release.bin_url}','${release.file_url}','${release.tag_name}')">Update now!</button>`;
             }
+        }
+    }
 
-            const table = document.createElement('table');
-            const tableHeader = document.createElement('tr');
-            tableHeader.innerHTML = '<th>Release</th><th>Date</th><th>Name</th><th colspan="2">Update:</th><th>Remark</th>';
-            table.appendChild(tableHeader);
+    const table = document.createElement('table');
+    const tableHeader = document.createElement('tr');
+    tableHeader.innerHTML = '<th>Release</th><th>Date</th><th>Name</th><th colspan="2"><center>Update</center></th><th>Remark</th>';
+    table.appendChild(tableHeader);
 
-            let rowCounter = 0;
-            releaseDetails.forEach(release => {
-                if (rowCounter < 4 && release?.html_url) {
-                    const tableRow = document.createElement('tr');
-                    let tablerow = `<td><a href="${release.html_url}" target="_new">${release.tag_name}</a></td><td>${release.date}</td><td>${release.name}</td><td><button type="button" onclick="otamodule.updateWebpage('${release.file_url}','${release.tag_name}', true)">Filesystem</button></td><td><button type="button" onclick="otamodule.updateESP('${release.bin_url}', true)">ESP32</button></td>`;
-                    if (release.tag_name == currentVer) {
-                        tablerow += "<td>current version</td>";
-                    } else if (release.date < formatEpoch(currentBuildtime)) {
-                        tablerow += "<td>older</td>";
-                    } else {
-                        tablerow += "<td>newer</td>";
-                    }
-                    tableRow.innerHTML = tablerow;
-                    table.appendChild(tableRow);
-                    rowCounter++;
-                }
-            });
+    let rowCounter = 0;
+    let radioFwCounter = 0;
+    releaseDetails.forEach(release => {
+        if (rowCounter < 4 && release?.html_url) {
+            const tableRow = document.createElement('tr');
+            let tablerow = `<td><a href="${release.html_url}" target="_new">${release.tag_name}</a></td><td>${release.date}</td><td>${release.name}</td><td><button type="button" onclick="otamodule.updateWebpage('${release.file_url}','${release.tag_name}', true)">Filesystem</button></td><td><button type="button" onclick="otamodule.updateESP('${release.bin_url}', true)">ESP32</button></td>`;
+            if (release.tag_name == currentVer) {
+                tablerow += "<td>current version</td>";
+            } else if (release.date < formatEpoch(currentBuildtime)) {
+                tablerow += "<td>older</td>";
+            } else {
+                tablerow += "<td>newer</td>";
+            }
+            tableRow.innerHTML = tablerow;
+            table.appendChild(tableRow);
+            rowCounter++;
+        }
+        if (release?.firmware_url) {
+             radioFwCounter++;
+        }
+    });
+    $('#releasetable').innerHTML = "";
+    $('#releasetable').appendChild(table);
 
-            $('#releasetable').innerHTML = "";
-            $('#releasetable').appendChild(table);
-            disableButtons(buttonState);
-        })
-        .catch(error => {
-            print('Error fetching releases:' + error, "red");
-        });
+    if(radioFwCounter > 0) {
+         const table1 = document.createElement('table');
+         const tableHeader1 = document.createElement('tr');
+
+         tableHeader1.innerHTML = '<th>Release</th><th>Date</th><th>Name</th><th><center>Update</center></th><th>Version</th><th>Remark</th>';
+         table1.appendChild(tableHeader1);
+
+         rowCounter = 0;
+         for (const release of releaseDetails) {
+             if (rowCounter < 4 && release?.firmware_url) {
+                 const tableRow = document.createElement('tr');
+                 var tablerow;
+                 var firmwareVer = "unknown";
+                 var release_url = release.firmware_url;
+
+                tablerow = `<td><a href="${release.html_url}" target="_new">${release.tag_name}</a></td><td>${release.date}</td><td>${release.name}</td>`;
+                tablerow += `<td><button type="button" onclick="otamodule.updateC6H2('${release_url}')">${gModuleType}</button></td>`;
+                const firmwareUrl = 'http://proxy.openepaperlink.org/proxy.php?url=' + release.firmware_url;
+                firmwareVer = await fetch(firmwareUrl, { method: 'GET'})
+                    .then(function (response) { return response.json(); })
+                    .then(function (response) { 
+                        return response[2]['version']; })
+                .catch(error => {
+                    print('Error fetching releases:' + error, "red");
+                });
+                 tablerow += '<td>' + firmwareVer + '</td><td>';
+                 if(firmwareVer != 'unknown') {
+                     let Ver = Number('0x' + firmwareVer);
+                     if(Ver > gCurrentRfVer) {
+                         tablerow += 'Newer';
+                     }
+                     else if (Ver < gCurrentRfVer) {
+                         tablerow += 'Older';
+                     }
+                     else if(!Number.isNaN(Ver)){
+                         tablerow += 'Same';
+                     }
+                 }
+                 tablerow += '</td>';
+                 tableRow.innerHTML = tablerow;
+                 table1.appendChild(tableRow);
+                 rowCounter++;
+             }
+         };
+
+         $('#radio_releasetable').innerHTML = "";
+         $('#radio_releasetable').appendChild(table1);
+    }
+
+	const table2 = document.createElement('table');
+	{
+		const tableHeader2 = document.createElement('tr');
+		tableHeader2.innerHTML = '<th>Firmware</th><th><center>Update</center></th>';
+		table2.appendChild(tableHeader2);
+		const tableRow = document.createElement('tr');
+		tablerow = '<td>Last uploaded version</td>';
+		tablerow += `<td><button type="button" onclick="otamodule.updateC6H2('')">${gModuleType}</button></td>`;
+		tableRow.innerHTML = tablerow;
+		table2.appendChild(tableRow);
+	}
+	{
+		const tableRow = document.createElement('tr');
+		const Url = "https://raw.githubusercontent.com/" + repo +
+					"/master/binaries/ESP32-" + gShortName + 
+					"/firmware_" + gShortName + ".json";
+
+		tablerow = `<td><a href="https://github.com/${repo}" target="_new">Latest version from repo</a></td>`;
+		tablerow += `<td><button type="button" onclick="otamodule.updateC6H2('${Url}')">${gModuleType}</button></td>`;
+		tableRow.innerHTML = tablerow;
+		table2.appendChild(tableRow);
+	}
+	$('#radio_releasetable1').innerHTML = "";
+	$('#radio_releasetable1').appendChild(table2);
+
+    disableButtons(buttonState);
 }
 
 export function updateAll(binUrl, fileUrl, tagname) {
@@ -358,19 +449,18 @@ $('#rollbackBtn').onclick = function () {
     disableButtons(false);
 }
 
-$('#updateC6Btn').onclick = function () {
+export async function updateC6H2(Url) {
     if (running) return;
     disableButtons(true);
     running = true;
     errors = 0;
+    const ReleaseUrl = Url.substring(0,Url.lastIndexOf('/'));
     const consoleDiv = document.getElementById('updateconsole');
     consoleDiv.scrollTop = consoleDiv.scrollHeight;
-
-    print("Flashing ESP32-C6...");
-
-    const isChecked = $('#c6download').checked;
     const formData = new FormData();
-    formData.append('download', isChecked ? '1' : '0');
+
+    print("Flashing " + gModuleType + " ...");
+    formData.append('url', ReleaseUrl);
 
     fetch("update_c6", {
         method: "POST",
@@ -418,7 +508,7 @@ $('#selectRepo').onclick = function (event) {
             if (!responseBody.trim().startsWith("[")) {
                 throw new Error("Failed to fetch the release info file");
             }
-            const updateData = JSON.parse(responseBody).filter(item => !item.name.endsWith('_full.bin'));
+            const updateData = JSON.parse(responseBody).filter(item => !item.name.endsWith('_full.bin') && !item.name.includes('_H2.') && !item.name.includes('_C6.'));
 
             const inputParent = $('#environment').parentNode;
             const selectElement = document.createElement('select');

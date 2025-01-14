@@ -825,37 +825,37 @@ h4 {
 	font-weight: bold;
 }
 
-#releasetable {
+.releasetable {
 	margin: 10px 0px;
 }
 
-#releasetable table {
+.releasetable table {
 	border-spacing: 1px;
 }
 
-#releasetable th {
+.releasetable th {
 	text-align: left;
 	background-color: #ffffff;
 	padding: 1px 5px;
 }
 
-#releasetable td {
+.releasetable td {
 	background-color: #ffffff;
 	padding: 1px 5px;
 	min-width: 70px;
 	vertical-align: baseline;
 }
 
-#releasetable td:nth-child(2) {
+.releasetable td:nth-child(2) {
 	white-space: nowrap;
 }
 
-#releasetable button {
+.releasetable button {
 	padding: 3px 10px;
 	background-color: #e0e0e0;
 }
 
-#releasetable button:hover {
+.releasetable button:hover {
 	background-color: #a0a0a0;
 }
 
