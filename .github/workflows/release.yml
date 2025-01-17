@@ -183,6 +183,24 @@ jobs:
           cp ESP32_S3_16_8_LILYGO_AP/firmware.bin espbinaries/ESP32_S3_16_8_LILYGO_AP.bin
           cp ESP32_S3_16_8_LILYGO_AP/merged-firmware.bin espbinaries/ESP32_S3_16_8_LILYGO_AP_full.bin
 
+      - name: Build firmware for ESP32_S3_16_8_LILYGO_T3
+        run: |
+          cd ESP32_AP-Flasher
+          export PLATFORMIO_BUILD_FLAGS="-D BUILD_VERSION=${{ github.ref_name }} -D SHA=$GITHUB_SHA"
+          pio run --environment ESP32_S3_16_8_LILYGO_T3
+          pio run --target buildfs --environment ESP32_S3_16_8_LILYGO_T3
+          mkdir /home/runner/work/OpenEPaperLink/OpenEPaperLink/ESP32_S3_16_8_LILYGO_T3
+          cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin /home/runner/work/OpenEPaperLink/OpenEPaperLink/ESP32_S3_16_8_LILYGO_T3/boot_app0.bin
+          cp .pio/build/ESP32_S3_16_8_LILYGO_T3/firmware.bin /home/runner/work/OpenEPaperLink/OpenEPaperLink/ESP32_S3_16_8_LILYGO_T3/firmware.bin
+          cp .pio/build/ESP32_S3_16_8_LILYGO_T3/bootloader.bin /home/runner/work/OpenEPaperLink/OpenEPaperLink/ESP32_S3_16_8_LILYGO_T3/bootloader.bin
+          cp .pio/build/ESP32_S3_16_8_LILYGO_T3/partitions.bin /home/runner/work/OpenEPaperLink/OpenEPaperLink/ESP32_S3_16_8_LILYGO_T3/partitions.bin
+          cp .pio/build/ESP32_S3_16_8_LILYGO_T3/littlefs.bin /home/runner/work/OpenEPaperLink/OpenEPaperLink/ESP32_S3_16_8_LILYGO_T3/littlefs.bin
+          cd /home/runner/work/OpenEPaperLink/OpenEPaperLink/ESP32_S3_16_8_LILYGO_T3
+          esptool.py --chip esp32-s3 merge_bin -o merged-firmware.bin --flash_mode dio --flash_freq 80m --flash_size 16MB 0x0000 bootloader.bin 0x8000 partitions.bin 0xe000 boot_app0.bin 0x10000 firmware.bin 0x00910000 littlefs.bin
+          cd /home/runner/work/OpenEPaperLink/OpenEPaperLink
+          cp ESP32_S3_16_8_LILYGO_T3/firmware.bin espbinaries/ESP32_S3_16_8_LILYGO_T3.bin
+          cp ESP32_S3_16_8_LILYGO_T3/merged-firmware.bin espbinaries/ESP32_S3_16_8_LILYGO_T3_full.bin
+
       - name: Build firmware for OpenEPaperLink_Nano_TLSR
         run: |
           cd ESP32_AP-Flasher
