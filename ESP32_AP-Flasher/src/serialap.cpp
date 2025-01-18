@@ -733,7 +733,11 @@ void checkWaitPowerCycle() {
 #endif
 }
 void segmentedShowIp() {
-    IPAddress IP = WiFi.localIP();
+    #ifndef W5500_ETH
+        IPAddress IP = WiFi.localIP();
+    #else
+        IPAddress IP = ETH.localIP();
+    #endif
     char temp[12];
     vTaskDelay(2000 / portTICK_PERIOD_MS);
     sendAPSegmentedData(apInfo.mac, (String) "IP    Addr", 0x0200, true, true);

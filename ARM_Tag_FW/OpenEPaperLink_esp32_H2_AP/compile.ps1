@@ -6,7 +6,7 @@
 #| Uart                               | ESP32H2_TX_IO24       | ESP32S3_RX_IO48
 #| Uart                               | ESP32H2_RX_IO23       | ESP32S3_TX_IO47
 
-&(Join-Path $env:USERPROFILE '\esp\esp-idf\export.ps1')
+&(Join-Path $env:USERPROFILE '\esp\v5.3.2\esp-idf\export.ps1')
 
 idf.py fullclean
 

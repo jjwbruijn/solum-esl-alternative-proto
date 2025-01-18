@@ -11,7 +11,9 @@
 #include "system.h"
 #include "tag_db.h"
 #include "tagdata.h"
-#include "wifimanager.h"
+#ifndef W5500_ETH
+  #include "wifimanager.h"
+#endif
 
 #ifdef HAS_EXT_FLASHER
 #include "webflasher.h"
@@ -171,7 +173,9 @@ void setup() {
 
 void loop() {
     ws.cleanupClients();
-    wm.poll();
+    #ifndef W5500_ETH
+        wm.poll();
+    #endif
 
     if (intervalSysinfo.doRun()) {
         wsSendSysteminfo();
