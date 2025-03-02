@@ -10,6 +10,9 @@ std::unordered_map<size_t, TagData::Parser> TagData::parsers = {};
 void TagData::loadParsers(const String& filename) {
     const long start = millis();
 
+    if (!contentFS->exists(filename)) {
+        return;
+    }
     fs::File file = contentFS->open(filename, "r");
     if (!file) {
         return;

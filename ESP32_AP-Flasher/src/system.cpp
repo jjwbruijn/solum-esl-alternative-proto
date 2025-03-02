@@ -14,7 +14,7 @@ void timeSyncCallback(struct timeval* tv) {
 }
 
 void initTime(void* parameter) {
-    if (WiFi.status() != WL_CONNECTED) {
+    if (!(WiFi.status() == WL_CONNECTED || wm.wifiStatus == ETHERNET)) {
         vTaskDelay(500 / portTICK_PERIOD_MS);
     }
     sntp_set_time_sync_notification_cb(timeSyncCallback);

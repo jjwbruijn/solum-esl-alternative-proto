@@ -2,22 +2,63 @@
 
 #ifdef HAS_SDCARD
 #include "FS.h"
+#ifdef SD_CARD_SDMMC
+#include "SD_MMC.h"
+#define SDCARD SD_MMC
+#else
 #include "SD.h"
 #include "SPI.h"
+#define SDCARD SD
+#endif
 #endif
 
+#ifndef SD_CARD_ONLY
 #include "LittleFS.h"
+#endif
 
 DynStorage::DynStorage() : isInited(0) {}
 
-SemaphoreHandle_t fsMutex;
+SemaphoreHandle_t fsMutex = NULL;
 
+#ifndef SD_CARD_ONLY
 static void initLittleFS() {
     LittleFS.begin();
     contentFS = &LittleFS;
 }
+#endif
 
 #ifdef HAS_SDCARD
+static bool sd_init_done = false;
+#ifdef SD_CARD_SDMMC
+static void initSDCard() {
+    if(!SD_MMC.begin("/sdcard", true, true, BOARD_MAX_SDMMC_FREQ, 5)){
+        Serial.println("Card Mount Failed");
+        return;
+    }
+    uint8_t cardType = SD_MMC.cardType();
+
+    if(cardType == CARD_NONE){
+        Serial.println("No SD_MMC card attached");
+        return;
+    }
+
+    Serial.print("SD_MMC Card Type: ");
+    if(cardType == CARD_MMC){
+        Serial.println("MMC");
+    } else if(cardType == CARD_SD){
+        Serial.println("SDSC");
+    } else if(cardType == CARD_SDHC){
+        Serial.println("SDHC");
+    } else {
+        Serial.println("UNKNOWN");
+    }
+
+    uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
+    Serial.printf("SD_MMC Card Size: %lluMB\n", cardSize);
+
+    contentFS = &SD_MMC;
+}
+#else
 static SPIClass* spi;
 
 static void initSDCard() {
@@ -45,15 +86,19 @@ static void initSDCard() {
     contentFS = &SD;
 }
 #endif
+#endif
 
 uint64_t DynStorage::freeSpace(){
     this->begin();
 #ifdef HAS_SDCARD
-    return SD.totalBytes() - SD.usedBytes();
+    return SDCARD.totalBytes() - SDCARD.usedBytes();
 #endif
+#ifndef SD_CARD_ONLY
     return LittleFS.totalBytes() - LittleFS.usedBytes();
+#endif
 }
 
+#ifndef SD_CARD_ONLY
 void copyFile(File in, File out) {
     Serial.print("Copying ");
     Serial.print(in.path());
@@ -127,14 +172,25 @@ void copyIfNeeded(const char* path) {
     }
 }
 #endif
+#endif
 
 void DynStorage::begin() {
-    fsMutex = xSemaphoreCreateMutex();
+    if(fsMutex == NULL) {
+        fsMutex = xSemaphoreCreateMutex();
+    }
+
+#ifndef SD_CARD_ONLY
     initLittleFS();
+#endif
 
 #ifdef HAS_SDCARD
-    initSDCard();
-
+    if(!sd_init_done) {
+        xSemaphoreTake(fsMutex, portMAX_DELAY);
+        initSDCard();
+        xSemaphoreGive(fsMutex);
+        sd_init_done = true;
+    }
+#ifndef SD_CARD_ONLY
     copyIfNeeded("/index.html");
     copyIfNeeded("/fonts");
     copyIfNeeded("/www");
@@ -143,6 +199,7 @@ void DynStorage::begin() {
     copyIfNeeded("/tag_md5_db.json");
     copyIfNeeded("/update_actions.json");
     copyIfNeeded("/content_template.json");
+#endif
 #endif
 
     if (!contentFS->exists("/current")) {
@@ -155,7 +212,17 @@ void DynStorage::begin() {
 
 void DynStorage::end() {
 #ifdef HAS_SDCARD
+#ifndef SD_CARD_ONLY
     initLittleFS();
+#endif
+#ifdef SD_CARD_SDMMC
+#ifndef SD_CARD_ONLY
+    contentFS = &LittleFS;
+#endif
+    SD_MMC.end();
+    sd_init_done = false;
+#else
+#ifndef SD_CARD_ONLY
     if (SD_CARD_CLK == FLASHER_AP_CLK ||
         SD_CARD_MISO == FLASHER_AP_MISO ||
         SD_CARD_MOSI == FLASHER_AP_MOSI) {
@@ -171,7 +238,8 @@ void DynStorage::end() {
 
         contentFS = &LittleFS;
     }
-
+#endif
+#endif
 #endif
 }
 

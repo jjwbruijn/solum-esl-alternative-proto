@@ -138,8 +138,10 @@ void saveDB(const String& filename) {
         vTaskDelay(pdMS_TO_TICKS(100));
         String backupFilename = filename + ".bak";
         if (!contentFS->rename(filename.c_str(), backupFilename.c_str())) {
+            xSemaphoreGive(fsMutex);
             logLine("error renaming tagDB to .bak");
             wsErr("error renaming tagDB to .bak");
+            xSemaphoreTake(fsMutex, portMAX_DELAY);
         }
     }
 
@@ -308,7 +310,7 @@ void clearPending(tagRecord* taginfo) {
 }
 
 void initAPconfig() {
-    DynamicJsonDocument APconfig(768);
+    DynamicJsonDocument APconfig(1000);
     File configFile = contentFS->open("/current/apconfig.json", "r");
     if (configFile) {
         DeserializationError error = deserializeJson(APconfig, configFile);

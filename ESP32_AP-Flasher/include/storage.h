@@ -4,6 +4,8 @@
 #include "FS.h"
 
 #ifdef HAS_SDCARD
+#ifndef SD_CARD_SDMMC
+
 #ifndef SD_CARD_SS
 #error SD_CARD_SS UNDEFINED
 #endif
@@ -18,6 +20,8 @@
 
 #ifndef SD_CARD_MOSI
 #define SD_CARD_MOSI 23
+#endif
+
 #endif
 #endif
 
@@ -36,7 +40,9 @@ class DynStorage {
 extern SemaphoreHandle_t fsMutex;
 extern DynStorage Storage;
 extern fs::FS *contentFS;
+#ifndef SD_CARD_ONLY
 extern void copyFile(File in, File out);
+#endif
 
 #endif
 

@@ -107,7 +107,7 @@ void wsSendSysteminfo() {
         strftime(timeBuffer, sizeof(timeBuffer), languageDateFormat[0].c_str(), &timeinfo);
         setVarDB("ap_date", timeBuffer);
     }
-    setVarDB("ap_ip", WiFi.localIP().toString());
+    setVarDB("ap_ip", wm.localIP().toString());
 
 #ifdef HAS_SUBGHZ
     String ApChanString = String(apInfo.channel);
@@ -874,10 +874,11 @@ void doImageUpload(AsyncWebServerRequest *request, String filename, size_t index
                     file.write(uploadInfo->buffer, uploadInfo->bufferSize);
                     file.close();
                     uploadInfo->bufferSize = 0;
+                    xSemaphoreGive(fsMutex);
                 } else {
+                    xSemaphoreGive(fsMutex);
                     logLine("Failed to open file for appending: " + uploadfilename);
                 }
-                xSemaphoreGive(fsMutex);
 
                 memcpy(uploadInfo->buffer, data, len);
                 uploadInfo->bufferSize = len;
@@ -891,10 +892,11 @@ void doImageUpload(AsyncWebServerRequest *request, String filename, size_t index
                 if (file) {
                     file.write(uploadInfo->buffer, uploadInfo->bufferSize);
                     file.close();
+                    xSemaphoreGive(fsMutex);
                 } else {
+                    xSemaphoreGive(fsMutex);
                     logLine("Failed to open file for appending: " + uploadfilename);
                 }
-                xSemaphoreGive(fsMutex);
                 request->_tempObject = nullptr;
                 delete uploadInfo;
             }
@@ -964,7 +966,7 @@ void doJsonUpload(AsyncWebServerRequest *request) {
         uint8_t mac[8];
         if (hex2mac(dst, mac)) {
             xSemaphoreTake(fsMutex, portMAX_DELAY);
-            File file = LittleFS.open("/current/" + dst + ".json", "w");
+            File file = contentFS->open("/current/" + dst + ".json", "w");
             if (!file) {
                 request->send(400, "text/plain", "Failed to create file");
                 xSemaphoreGive(fsMutex);
