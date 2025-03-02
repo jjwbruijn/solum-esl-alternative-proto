@@ -95,7 +95,12 @@ bool BLE_filter_add_device(BLEAdvertisedDevice advertisedDevice) {
         for (int i = 0; i < advertisedDevice.getManufacturerData().length(); i++)
             Serial.printf("%02X", manuData[i]);
         Serial.printf("\r\n");
+#if ESP_ARDUINO_VERSION_MAJOR == 2
         memcpy(&manuData, (uint8_t*)advertisedDevice.getManufacturerData().data(), manuDatalen);
+#else
+        // [Nic] suggested fix for arduino 3.x by copilot, but I cannot test it 
+        memcpy(&manuData, (uint8_t*)advertisedDevice.getManufacturerData().c_str(), manuDatalen);
+#endif
         if (manuDatalen == 7 && manuData[0] == 0x53 && manuData[1] == 0x50) {  // Lets check for a Gicisky E-Paper display
 
             struct espAvailDataReq theAdvData;

@@ -209,7 +209,7 @@ bool FlashC6_H2(const char *RepoUrl) {
     bool bLoaderInit = false;
     bool bDownload = strlen(RepoUrl) > 0;
     int retry;
-    DynamicJsonDocument jsonDoc(1024);
+    JsonDocument jsonDoc;
 
     LOG("%s#%d: ",__FUNCTION__,__LINE__); util::printHeap();
 

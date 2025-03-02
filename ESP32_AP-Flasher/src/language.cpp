@@ -29,8 +29,8 @@ void updateLanguageFromConfig() {
         return;
     }
 
-    DynamicJsonDocument doc(1024);
-    StaticJsonDocument<80> filter;
+    JsonDocument doc;
+    JsonDocument filter;
     filter[String(currentLanguage)] = true;
     const DeserializationError error = deserializeJson(doc, file, DeserializationOption::Filter(filter));
     file.close();

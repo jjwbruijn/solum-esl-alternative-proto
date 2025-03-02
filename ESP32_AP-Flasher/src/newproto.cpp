@@ -833,7 +833,7 @@ bool checkMirror(struct tagRecord* taginfo, struct pendingData* pending) {
     for (int16_t c = 0; c < tagDB.size(); c++) {
         tagRecord* taginfo2 = tagDB.at(c);
         if (taginfo2->contentMode == 20 && taginfo2->version == 0) {
-            DynamicJsonDocument doc(500);
+            JsonDocument doc;
             deserializeJson(doc, taginfo2->modeConfigJson);
             JsonObject cfgobj = doc.as<JsonObject>();
             uint8_t mac[8] = {0};

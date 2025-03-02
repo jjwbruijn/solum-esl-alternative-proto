@@ -36,6 +36,14 @@ struct ledInstruction {
     bool reQueue = false;
 };
 
+void ledcSet(uint8_t channel, uint8_t brightness) {
+#if ESP_ARDUINO_VERSION_MAJOR == 2
+    ledcWrite(channel, brightness);
+#else
+    ledcWriteChannel(channel, brightness);
+#endif 
+}
+
 #ifdef HAS_RGB_LED
 
 void addToRGBQueue(struct ledInstructionRGB* rgb, bool requeue) {
@@ -132,13 +140,9 @@ void rgbIdleStep() {
 
 void setBrightness(int brightness) {
     maxledbrightness = brightness;
-    
-#if defined HAS_LILYGO_TPANEL || defined HAS_4inch_TPANEL
-    ledcWrite(1, config.tft);
-#else
-  #ifdef HAS_TFT
-    ledcWrite(6, config.tft);
-  #endif
+
+#if defined HAS_LILYGO_TPANEL || defined HAS_4inch_TPANEL || HAS_TFT
+    ledcSet(1, config.tft);
 #endif
 #ifdef HAS_RGB_LED
     FastLED.setBrightness(maxledbrightness);
@@ -150,12 +154,8 @@ void updateBrightnessFromConfig() {
     if (newbrightness != maxledbrightness) {
         setBrightness(newbrightness);
     }
-#if defined HAS_LILYGO_TPANEL || defined HAS_4inch_TPANEL
-    ledcWrite(1, config.tft);
-#else
-  #ifdef HAS_TFT
-    ledcWrite(6, config.tft);
-  #endif
+#if defined HAS_LILYGO_TPANEL || defined HAS_4inch_TPANEL || HAS_TFT
+    ledcSet(1, config.tft);
 #endif
     if (apInfo.state == AP_STATE_NORADIO) addFadeMono(config.led);
 }
@@ -176,11 +176,7 @@ void addFadeMono(uint8_t value) {
 }
 
 void showMono(uint8_t brightness) {
-#ifdef CONFIG_IDF_TARGET_ESP32
-    ledcWrite(7, 255 - gamma8[brightness]);
-#else
-    ledcWrite(7, gamma8[brightness]);
-#endif
+    ledcSet(7, gamma8[brightness]);
 }
 
 void quickBlink(uint8_t repeat) {
@@ -222,11 +218,13 @@ void ledTask(void* parameter) {
 
     ledQueue = xQueueCreate(30, sizeof(struct ledInstruction*));
 
-    ledcSetup(7, 5000, 8);
     if (FLASHER_LED != -1) {
-        digitalWrite(FLASHER_LED, HIGH);
-        pinMode(FLASHER_LED, OUTPUT);
+#if ESP_ARDUINO_VERSION_MAJOR == 2
+        ledcSetup(7, 5000, 8);
         ledcAttachPin(FLASHER_LED, 7);
+#else
+        ledcAttachChannel(FLASHER_LED, 1000, 8, 7);
+#endif
     }
 
     struct ledInstruction* monoled = nullptr;

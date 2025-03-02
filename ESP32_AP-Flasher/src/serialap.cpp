@@ -699,7 +699,7 @@ void rxSerialTask(void* parameter) {
         vTaskDelay(1 / portTICK_PERIOD_MS);
     }  // end of while(1)
 
-    AP_SERIAL_PORT.end(false);
+    AP_SERIAL_PORT.end();
     gSerialTaskState = SERIAL_STATE_STOPPED;
     LOG("rxSerialTask stopped\n");
     vTaskDelete(NULL);

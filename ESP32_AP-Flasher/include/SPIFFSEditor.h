@@ -4,9 +4,9 @@
 
 class SPIFFSEditor: public AsyncWebHandler {
   private:
-    fs::FS _fs;
+    mutable fs::FS _fs;
     String _username;
-    String _password; 
+    String _password;
     bool _authenticated;
     uint32_t _startTime;
   public:
@@ -15,10 +15,10 @@ class SPIFFSEditor: public AsyncWebHandler {
 #else
     SPIFFSEditor(const String& username=String(), const String& password=String(), const fs::FS& fs=SPIFFS);
 #endif
-    virtual bool canHandle(AsyncWebServerRequest *request) override final;
+    virtual bool canHandle(AsyncWebServerRequest* request) const override final;
     virtual void handleRequest(AsyncWebServerRequest *request) override final;
     virtual void handleUpload(AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) override final;
-    virtual bool isRequestHandlerTrivial() override final {return false;}
+    virtual bool isRequestHandlerTrivial() const override final {return false;}
     virtual String listFilesRecursively(String path, bool recursive = false);
 };
 

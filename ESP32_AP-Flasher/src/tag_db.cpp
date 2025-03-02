@@ -67,24 +67,23 @@ bool hex2mac(const String& hexString, uint8_t* mac) {
 }
 
 String tagDBtoJson(const uint8_t mac[8], uint8_t startPos) {
-    DynamicJsonDocument doc(5000);
-    JsonArray tags = doc.createNestedArray("tags");
+    JsonDocument doc;
+    JsonArray tags = doc["tags"].to<JsonArray>();
 
     for (uint32_t c = startPos; c < tagDB.size(); ++c) {
         const tagRecord* taginfo = tagDB.at(c);
 
         const bool select = !mac || memcmp(taginfo->mac, mac, 8) == 0;
         if (select && taginfo->version == 0) {
-            JsonObject tag = tags.createNestedObject();
+            JsonObject tag = tags.add<JsonObject>();
             fillNode(tag, taginfo);
+            if (measureJson(doc) > 5000) {
+                doc["continu"] = c + 1;
+                break;
+            }
             if (mac) {
                 break;
             }
-        }
-
-        if (doc.capacity() - doc.memoryUsage() < doc.memoryUsage() / (c + 1) + 500) {
-            doc["continu"] = c + 1;
-            break;
         }
     }
 
@@ -126,7 +125,7 @@ void fillNode(JsonObject& tag, const tagRecord* taginfo) {
 }
 
 void saveDB(const String& filename) {
-    DynamicJsonDocument doc(2500);
+    JsonDocument doc;
 
     const long t = millis();
 
@@ -156,7 +155,7 @@ void saveDB(const String& filename) {
         doc.clear();
 
         if (taginfo->version == 0) {
-            JsonObject tag = doc.createNestedObject();
+            JsonObject tag = doc.add<JsonObject>();
             fillNode(tag, taginfo);
             if (c > 0) {
                 file.write(',');
@@ -186,7 +185,7 @@ bool loadDB(const String& filename) {
     bool parsing = true;
 
     if (readfile.find("[")) {
-        DynamicJsonDocument doc(1000);
+        JsonDocument doc;
         while (parsing) {
             DeserializationError err = deserializeJson(doc, readfile);
             if (!err) {
@@ -308,7 +307,7 @@ void clearPending(tagRecord* taginfo) {
 }
 
 void initAPconfig() {
-    DynamicJsonDocument APconfig(768);
+    JsonDocument APconfig;
     File configFile = contentFS->open("/current/apconfig.json", "r");
     if (configFile) {
         DeserializationError error = deserializeJson(APconfig, configFile);
@@ -319,29 +318,29 @@ void initAPconfig() {
         }
         configFile.close();
     }
-    config.channel = APconfig.containsKey("channel") ? APconfig["channel"] : 0;
-    config.subghzchannel = APconfig.containsKey("subghzchannel") ? APconfig["subghzchannel"] : 0;
+    config.channel = APconfig["channel"].is<uint8_t>() ? APconfig["channel"] : 0;
+    config.subghzchannel = APconfig["subghzchannel"].is<uint8_t>() ? APconfig["subghzchannel"] : 0;
     if (APconfig["alias"]) strlcpy(config.alias, APconfig["alias"], sizeof(config.alias));
-    config.led = APconfig.containsKey("led") ? APconfig["led"] : 255;
-    config.tft = APconfig.containsKey("tft") ? APconfig["tft"] : 255;
-    config.language = APconfig.containsKey("language") ? APconfig["language"] : 0;
-    config.maxsleep = APconfig.containsKey("maxsleep") ? APconfig["maxsleep"] : 10;
-    config.stopsleep = APconfig.containsKey("stopsleep") ? APconfig["stopsleep"] : 1;
-    config.preview = APconfig.containsKey("preview") ? APconfig["preview"] : 1;
-    config.nightlyreboot = APconfig.containsKey("nightlyreboot") ? APconfig["nightlyreboot"] : 1;
-    config.lock = APconfig.containsKey("lock") ? APconfig["lock"] : 0;
-    config.sleepTime1 = APconfig.containsKey("sleeptime1") ? APconfig["sleeptime1"] : 0;
-    config.sleepTime2 = APconfig.containsKey("sleeptime2") ? APconfig["sleeptime2"] : 0;
-    config.ble = APconfig.containsKey("ble") ? APconfig["ble"] : 0;
-    config.discovery = APconfig.containsKey("discovery") ? APconfig["discovery"] : 0;
+    config.led = APconfig["led"].is<uint8_t>() ? APconfig["led"] : 255;
+    config.tft = APconfig["tft"].is<uint8_t>() ? APconfig["tft"] : 255;
+    config.language = APconfig["language"].is<uint8_t>() ? APconfig["language"] : 0;
+    config.maxsleep = APconfig["maxsleep"].is<uint8_t>() ? APconfig["maxsleep"] : 10;
+    config.stopsleep = APconfig["stopsleep"].is<uint8_t>() ? APconfig["stopsleep"] : 1;
+    config.preview = APconfig["preview"].is<uint8_t>() ? APconfig["preview"] : 1;
+    config.nightlyreboot = APconfig["nightlyreboot"].is<uint8_t>() ? APconfig["nightlyreboot"] : 1;
+    config.lock = APconfig["lock"].is<uint8_t>() ? APconfig["lock"] : 0;
+    config.sleepTime1 = APconfig["sleeptime1"].is<uint8_t>() ? APconfig["sleeptime1"] : 0;
+    config.sleepTime2 = APconfig["sleeptime2"].is<uint8_t>() ? APconfig["sleeptime2"] : 0;
+    config.ble = APconfig["ble"].is<uint8_t>() ? APconfig["ble"] : 0;
+    config.discovery = APconfig["discovery"].is<uint8_t>() ? APconfig["discovery"] : 0;
 #ifdef BLE_ONLY
     config.ble = true;
 #endif
     // default wifi power 8.5 dbM
     // see https://github.com/espressif/arduino-esp32/blob/master/libraries/WiFi/src/WiFiGeneric.h#L111
-    config.wifiPower = APconfig.containsKey("wifipower") ? APconfig["wifipower"] : 34;
-    config.repo = APconfig.containsKey("repo") ? APconfig["repo"].as<String>() : String("OpenEPaperLink/OpenEPaperLink");
-    config.env = APconfig.containsKey("env") ? APconfig["env"].as<String>() : String(STR(BUILD_ENV_NAME));
+    config.wifiPower = APconfig["wifipower"].is<uint8_t>() ? APconfig["wifipower"] : 34;
+    config.repo = APconfig["repo"].is<String>() ? APconfig["repo"].as<String>() : String("OpenEPaperLink/OpenEPaperLink");
+    config.env = APconfig["env"].is<String>() ? APconfig["env"].as<String>() : String(STR(BUILD_ENV_NAME));
     if (APconfig["timezone"]) {
         strlcpy(config.timeZone, APconfig["timezone"], sizeof(config.timeZone));
     } else {
@@ -352,7 +351,7 @@ void initAPconfig() {
 void saveAPconfig() {
     xSemaphoreTake(fsMutex, portMAX_DELAY);
     fs::File configFile = contentFS->open("/current/apconfig.json", "w");
-    DynamicJsonDocument APconfig(500);
+    JsonDocument APconfig;
     APconfig["channel"] = config.channel;
     APconfig["subghzchannel"] = config.subghzchannel;
     APconfig["alias"] = config.alias;
@@ -388,7 +387,7 @@ HwType getHwType(const uint8_t id) {
         File jsonFile = contentFS->open(filename, "r");
 
         if (jsonFile) {
-            StaticJsonDocument<150> filter;
+            JsonDocument filter;
             filter["width"] = true;
             filter["height"] = true;
             filter["rotatebuffer"] = true;
@@ -398,7 +397,7 @@ HwType getHwType(const uint8_t id) {
             filter["g5_compression"] = true;
             filter["highlight_color"] = true;
             filter["colortable"] = true;
-            StaticJsonDocument<1000> doc;
+            JsonDocument doc;
             DeserializationError error = deserializeJson(doc, jsonFile, DeserializationOption::Filter(filter));
             jsonFile.close();
             if (error) {
@@ -412,17 +411,17 @@ HwType getHwType(const uint8_t id) {
                 hwType.rotatebuffer = doc["rotatebuffer"];
                 hwType.bpp = doc["bpp"];
                 hwType.shortlut = doc["shortlut"];
-                if (doc.containsKey("zlib_compression")) {
+                if (doc["zlib_compression"].is<const char*>()) {
                     hwType.zlib = strtol(doc["zlib_compression"], nullptr, 16);
                 } else {
                     hwType.zlib = 0;
                 }
-                if (doc.containsKey("g5_compression")) {
+                if (doc["g5_compression"].is<const char*>()) {
                     hwType.g5 = strtol(doc["g5_compression"], nullptr, 16);
                 } else {
                     hwType.g5 = 0;
                 }
-                hwType.highlightColor = doc.containsKey("highlight_color") ? doc["highlight_color"].as<uint16_t>() : 2;
+                hwType.highlightColor = doc["highlight_color"].is<uint16_t>() ? doc["highlight_color"].as<uint16_t>() : 2;
                 JsonObject colorTable = doc["colortable"];
                 for (auto kv : colorTable) {
                     JsonArray color = kv.value();

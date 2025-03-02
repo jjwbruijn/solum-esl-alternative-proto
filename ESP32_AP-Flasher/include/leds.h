@@ -26,6 +26,7 @@ const uint8_t PROGMEM gamma8[] = {
 void ledTask(void* parameter);
 void setBrightness(int brightness);
 void updateBrightnessFromConfig();
+void ledcSet(uint8_t channel, uint8_t brightness);
 
 #ifdef HAS_RGB_LED
 extern CRGB rgbIdleColor;
@@ -34,7 +35,6 @@ void shortBlink(CRGB cname);
 void showColorPattern(CRGB colorone, CRGB colortwo, CRGB colorthree);
 void rgbIdle();
 void addFadeColor(CRGB cname);
-
 #endif
 
 void quickBlink(uint8_t repeat);

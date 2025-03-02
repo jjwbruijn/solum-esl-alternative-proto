@@ -147,7 +147,7 @@ bool WifiManager::connectToWifi(String ssid, String pass, bool savewhensuccessfu
     delay(100);
     char hostname[32] = "OpenEpaperLink-";
     uint8_t mac[6];
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    WiFi.macAddress(mac);
     char lastTwoBytes[5];
     sprintf(lastTwoBytes, "%02X%02X", mac[4], mac[5]);
     strcat(hostname, lastTwoBytes);

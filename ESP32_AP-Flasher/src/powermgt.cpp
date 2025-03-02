@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 #include "settings.h"
+#include "leds.h"
 
 #ifdef HAS_EXT_FLASHER
 #include "soc/rtc_cntl_reg.h"
@@ -34,16 +35,21 @@ void rampTagPower(uint8_t* pin, bool up) {
     WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 #endif
     if (up) {
+#if ESP_ARDUINO_VERSION_MAJOR == 2
         ledcSetup(0, 50000, 8);
         ledcWrite(0, 254);
         vTaskDelay(1 / portTICK_PERIOD_MS);
         pinMode(pin[0], OUTPUT);
+        ledcAttachPin(pin[0], 0);
+#else
+        ledcWriteChannel(0, 254);
+        ledcAttachChannel(pin[0], 50000, 8, 0);
+#endif
         pinMode(FLASHER_EXT_RESET, OUTPUT);
         digitalWrite(FLASHER_EXT_RESET, LOW);
-        ledcAttachPin(pin[0], 0);
         vTaskDelay(10 / portTICK_PERIOD_MS);
         for (uint8_t c = 254; c != 0xFF; c--) {
-            ledcWrite(0, c);
+            ledcSet(0, c);
             delayMicroseconds(700);
         }
         digitalWrite(pin[0], LOW);
@@ -52,14 +58,14 @@ void rampTagPower(uint8_t* pin, bool up) {
         digitalWrite(FLASHER_EXT_RESET, INPUT_PULLUP);
     } else {
         ledcSetup(0, 50000, 8);
-        ledcWrite(0, 0);
+        ledcSet(0, 0);
         vTaskDelay(1 / portTICK_PERIOD_MS);
         pinMode(pin[0], OUTPUT);
         pinMode(FLASHER_EXT_RESET, INPUT_PULLDOWN);
         ledcAttachPin(pin[0], 0);
         vTaskDelay(10 / portTICK_PERIOD_MS);
         for (uint8_t c = 0; c < 0xFF; c++) {
-            ledcWrite(0, c);
+            ledcSet(0, c);
             if (c > 250) {
                 vTaskDelay(2 / portTICK_PERIOD_MS);
             } else {

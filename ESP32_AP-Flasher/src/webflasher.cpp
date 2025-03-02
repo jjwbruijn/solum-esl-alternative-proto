@@ -466,9 +466,9 @@ void webFlasherTask(void* parameter) {
 }
 
 void handleWSdata(uint8_t* data, size_t len, AsyncWebSocketClient* client) {
-    StaticJsonDocument<200> doc;
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, (const char*)data);
-    StaticJsonDocument<250> response;
+    JsonDocument response;
     response["flashstatus"] = 1;
 
     if (error) {
@@ -476,7 +476,7 @@ void handleWSdata(uint8_t* data, size_t len, AsyncWebSocketClient* client) {
         return;
     }
 
-    if (doc.containsKey("flashcmd")) {
+    if (doc["flashcmd"].is<int>()) {
         uint16_t flashcmd = doc["flashcmd"].as<int>();
         switch (flashcmd) {
             case WEBFLASH_ENABLE_AUTOFLASH:

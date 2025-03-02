@@ -374,10 +374,15 @@ void yellow_ap_display_init(void) {
     pinMode(LCD_BL, OUTPUT);
     digitalWrite(LCD_BL, HIGH);
 
+#if ESP_ARDUINO_VERSION_MAJOR == 2
     ledcAttachPin(LCD_BL, 1);
     ledcSetup(1, 1000, 8);
-
     ledcWrite(1, config.tft);  // brightness
+#else
+    ledcAttachChannel(LCD_BL, 1000, 8, 1);
+    ledcWriteChannel(1, config.tft);
+#endif
+
 #if defined HAS_LILYGO_TPANEL
     Wire.begin(IIC_SDA, IIC_SCL);
 #endif
@@ -403,12 +408,18 @@ void yellow_ap_display_init(void) {
     tft2.setTextColor(TFT_WHITE);
     tftLogscreen = true;
 
-    ledcSetup(6, 5000, 8);
-    ledcAttachPin(TFT_BACKLIGHT, 6);
+#if ESP_ARDUINO_VERSION_MAJOR == 2
+    ledcSetup(1, 5000, 8);
+    ledcAttachPin(TFT_BACKLIGHT, 1);
+    ledcWrite(1, config.tft);
     if (tft2.width() == 160) {
         GPIO.func_out_sel_cfg[TFT_BACKLIGHT].inv_sel = 1;
     }
-    ledcWrite(6, config.tft);
+#else
+    ledcAttachChannel(TFT_BACKLIGHT, 5000, 8, 1);
+    ledcWriteChannel(1, config.tft);
+    if (tft2.width() == 160) ledcOutputInvert(TFT_BACKLIGHT, true);
+#endif
 #endif
 }
 

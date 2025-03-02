@@ -39,7 +39,7 @@ SemaphoreHandle_t wsMutex;
 uint32_t lastssidscan = 0;
 
 void wsLog(const String &text) {
-    StaticJsonDocument<250> doc;
+    JsonDocument doc;
     doc["logMsg"] = text;
     if (wsMutex) xSemaphoreTake(wsMutex, portMAX_DELAY);
     ws.textAll(doc.as<String>());
@@ -47,7 +47,7 @@ void wsLog(const String &text) {
 }
 
 void wsErr(const String &text) {
-    StaticJsonDocument<250> doc;
+    JsonDocument doc;
     doc["errMsg"] = text;
     if (wsMutex) xSemaphoreTake(wsMutex, portMAX_DELAY);
     ws.textAll(doc.as<String>());
@@ -66,8 +66,8 @@ size_t dbSize() {
 }
 
 void wsSendSysteminfo() {
-    DynamicJsonDocument doc(300);
-    JsonObject sys = doc.createNestedObject("sys");
+    JsonDocument doc;
+    JsonObject sys = doc["sys"].to<JsonObject>();
     time_t now;
     time(&now);
     static int freeSpaceLastRun = 0;
@@ -206,8 +206,8 @@ void wsSendTaginfo(const uint8_t *mac, uint8_t syncMode) {
 }
 
 void wsSendAPitem(struct APlist *apitem) {
-    DynamicJsonDocument doc(250);
-    JsonObject ap = doc.createNestedObject("apitem");
+    JsonDocument doc;
+    JsonObject ap = doc["apitem"].to<JsonObject>();
 
     char version_str[6];
     sprintf(version_str, "%04X", apitem->version);
@@ -228,7 +228,7 @@ void wsSerial(const String &text) {
 }
 
 void wsSerial(const String &text, const String &color) {
-    StaticJsonDocument<250> doc;
+    JsonDocument doc;
     doc["console"] = text;
     if (!color.isEmpty()) doc["color"] = color;
     Serial.println(text);
@@ -322,7 +322,7 @@ void init_web() {
                                     return;
                                 }
                             }
-                            request->send_P(200, "application/octet-stream", queueItem->data, queueItem->len);
+                            request->send(200, "application/octet-stream", queueItem->data, queueItem->len);
                             return;
                         }
                     } else {
@@ -336,7 +336,7 @@ void init_web() {
                             taginfo->data = getDataForFile(file);
                             file.close();
                         }
-                        request->send_P(200, "application/octet-stream", taginfo->data, taginfo->len);
+                        request->send(200, "application/octet-stream", taginfo->data, taginfo->len);
                         return;
                     }
                 }
@@ -658,7 +658,7 @@ void init_web() {
     });
     server.on("/set_vars", HTTP_POST, [](AsyncWebServerRequest *request) {
         if (request->hasParam("json", true)) {
-            DynamicJsonDocument jsonDocument(2048);
+            JsonDocument jsonDocument;
             DeserializationError error = deserializeJson(jsonDocument, request->getParam("json", true)->value());
             if (error) {
                 request->send(400, "text/plain", "Failed to parse JSON");
@@ -685,7 +685,7 @@ void init_web() {
     server.on("/get_wifi_config", HTTP_GET, [](AsyncWebServerRequest *request) {
         Preferences preferences;
         AsyncResponseStream *response = request->beginResponseStream("application/json");
-        StaticJsonDocument<250> doc;
+        JsonDocument doc;
         preferences.begin("wifi", false);
         const char *keys[] = {"ssid", "pw", "ip", "mask", "gw", "dns"};
         const size_t numKeys = sizeof(keys) / sizeof(keys[0]);
@@ -699,13 +699,13 @@ void init_web() {
 
     server.on("/get_ssid_list", HTTP_GET, [](AsyncWebServerRequest *request) {
         AsyncResponseStream *response = request->beginResponseStream("application/json");
-        DynamicJsonDocument doc(5000);
+        JsonDocument doc;
 
         doc["scanstatus"] = WiFi.scanComplete();
-        JsonArray networks = doc.createNestedArray("networks");
+        JsonArray networks = doc["networks"].to<JsonArray>();
         for (int i = 0; i < (WiFi.scanComplete() > 50 ? 50 : WiFi.scanComplete()); ++i) {
             if (WiFi.SSID(i) != "") {
-                JsonObject network = networks.createNestedObject();
+                JsonObject network = networks.add<JsonObject>();
                 network["ssid"] = WiFi.SSID(i);
                 network["ch"] = WiFi.channel(i);
                 network["rssi"] = WiFi.RSSI(i);
@@ -731,7 +731,7 @@ void init_web() {
         const size_t numKeys = sizeof(keys) / sizeof(keys[0]);
         for (size_t i = 0; i < numKeys; i++) {
             String key = keys[i];
-            if (jsonObj.containsKey(key)) {
+            if (jsonObj[key].is<String>()) {
                 preferences.putString(key.c_str(), jsonObj[key].as<String>());
             }
         }
