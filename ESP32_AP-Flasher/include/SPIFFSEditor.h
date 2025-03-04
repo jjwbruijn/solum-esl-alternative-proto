@@ -1,6 +1,10 @@
 #ifndef SPIFFSEditor_H_
 #define SPIFFSEditor_H_
-#include <ESPAsyncWebServer.h>
+#ifdef W5500_ETH
+  #include <AsyncWebServer_ESP32_SC_W5500.h>
+#else
+  #include <ESPAsyncWebServer.h>
+#endif
 
 class SPIFFSEditor: public AsyncWebHandler {
   private:
